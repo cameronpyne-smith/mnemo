@@ -107,14 +107,14 @@ Each phase ends runnable and used-in-anger before the next starts.
 - [x] Vault bootstrap: `mnemo init` creates folder skeleton + root hub (idempotent, never overwrites)
 - [x] Test fixtures: a small `testdata/` vault including foreign-formatted notes
 
-### Phase 1 — Vault engine + CLI (v1 milestone)
-- [ ] In-memory FTS (Bleve) + link graph; full rebuild on daemon start; incremental update on writes
-- [ ] Daemon: `mnemo serve` — HTTP API (localhost first), inbox watcher
-- [ ] Capture path: `mnemo add "..."` / stdin / file → inbox, sub-second
-- [ ] Filing agent: agentic loop over vault tools (search, read, write, link, hub-update); processes inbox items; conservative prompts
-- [ ] `mnemo search`, `mnemo get`, `mnemo status` against the API
-- [ ] Rename-with-rewrite operation
-- [ ] Filing eval harness: fixture dumps + expected outcomes; scores a model/prompt combo (basis for all model swaps)
+### Phase 1 — Vault engine + CLI (v1 milestone) ✅ (2026-07-14)
+- [x] In-memory FTS (Bleve) + link graph; full rebuild on daemon start; incremental update on writes (`internal/index`, `internal/store`)
+- [x] Daemon: `mnemo serve` — HTTP API (localhost first), inbox worker (15s scan + wake-on-capture); `--no-filing` to disable the agent
+- [x] Capture path: `mnemo add "..."` / stdin / `-f file` → inbox; falls back to writing the inbox file directly when the daemon is down
+- [x] Filing agent: agentic loop (search_notes, read_note, write_note, add_to_hub, finish); failed filings stay in inbox; processed captures move to archive/ with `filed_into`
+- [x] `mnemo search`, `mnemo get`, `mnemo status`, `mnemo rename` against the API; also `/index`, `/notes/{slug}/links`, `/notes/{slug}/edit` endpoints and bearer-token auth (early, ahead of Phase 2)
+- [x] Rename-with-rewrite operation (aliases and heading anchors included)
+- [x] Filing eval harness: `MNEMO_OLLAMA_TESTS=<url> go test ./internal/agent -run Eval -v` — scores capture→file outcomes (facts preserved, inbox drained, hub reachability, no fragmentation)
 
 ### Phase 2 — Remote access + MCP (Claude Code integration)
 - [ ] Bearer-token auth middleware; bind to tailnet address

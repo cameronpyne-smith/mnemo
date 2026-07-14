@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"time"
 
 	"github.com/spf13/cobra"
 
@@ -28,9 +29,19 @@ func newRootCmd() *cobra.Command {
 		SilenceErrors: true,
 	}
 	root.PersistentFlags().StringVar(&configPath, "config", "", "path to config file")
-	root.AddCommand(newInitCmd(&configPath))
+	root.AddCommand(
+		newInitCmd(&configPath),
+		newServeCmd(&configPath),
+		newAddCmd(&configPath),
+		newSearchCmd(&configPath),
+		newGetCmd(&configPath),
+		newStatusCmd(&configPath),
+		newRenameCmd(&configPath),
+	)
 	return root
 }
+
+var timeNow = time.Now
 
 func newInitCmd(configPath *string) *cobra.Command {
 	var vaultPath string
