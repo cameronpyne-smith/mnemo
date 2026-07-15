@@ -55,7 +55,7 @@ func TestEvalFiling(t *testing.T) {
 	}
 	model := os.Getenv("MNEMO_OLLAMA_MODEL")
 	if model == "" {
-		model = "qwen3:30b-a3b"
+		model = "qwen3.6:35b"
 	}
 
 	var passed, total int

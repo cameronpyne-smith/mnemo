@@ -15,7 +15,7 @@ func TestLiveChatToolCall(t *testing.T) {
 	}
 	model := os.Getenv("MNEMO_OLLAMA_MODEL")
 	if model == "" {
-		model = "qwen3:30b-a3b"
+		model = "qwen3.6:35b"
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)

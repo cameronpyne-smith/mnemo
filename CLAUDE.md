@@ -27,4 +27,4 @@ Go daemon that manages a second-brain vault of plain markdown notes: captures du
 - Table-driven tests; vault fixtures under `testdata/`. Tests needing a live ollama are gated behind `MNEMO_OLLAMA_TESTS=<base-url>` (skip by default; `MNEMO_OLLAMA_MODEL`/`MNEMO_OLLAMA_EMBED_MODEL` override defaults).
 - Errors wrapped with `fmt.Errorf("...: %w", err)`; no panics outside `main`.
 - All LLM I/O behind interfaces (`internal/ollama` client is the only implementation for now).
-- Model defaults live in config, not code: agent `qwen3:30b-a3b`, embeddings `qwen3-embedding`.
+- Model defaults live in config, not code: agent `qwen3.6:35b`, embeddings `qwen3-embedding`.

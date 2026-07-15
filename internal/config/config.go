@@ -26,7 +26,7 @@ func Default() Config {
 		Bind: "127.0.0.1:7920",
 		Ollama: Ollama{
 			BaseURL:    "http://localhost:11434",
-			AgentModel: "qwen3:30b-a3b",
+			AgentModel: "qwen3.6:35b",
 			EmbedModel: "qwen3-embedding",
 		},
 	}
