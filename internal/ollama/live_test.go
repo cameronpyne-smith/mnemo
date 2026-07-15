@@ -56,7 +56,7 @@ func TestLiveEmbed(t *testing.T) {
 	}
 	model := os.Getenv("MNEMO_OLLAMA_EMBED_MODEL")
 	if model == "" {
-		model = "qwen3-embedding"
+		model = "qwen3-embedding:8b"
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)

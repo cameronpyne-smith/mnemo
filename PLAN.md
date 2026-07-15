@@ -16,7 +16,7 @@ A second-brain agent. mnemo owns a vault of plain markdown notes, files whatever
 | Ingest | Capture now, file async. Dumps land in `inbox/` instantly (durable, never blocked by the model); the filing agent processes the inbox: pick/create target note, rewrite/merge, frontmatter, links | Capture must never fail because a model is slow or down. |
 | Dreamer | Background subsystem inside the daemon (hippo-inspired). Passes write results **into the markdown** — never into a side database | The wikilink structure is the only graph. No second source of truth. |
 | Remote access | Daemon binds to the tailnet; static bearer token | Zero internet-exposed ports, encrypted transport, works away from home. |
-| Models | Configurable. Defaults: agent `qwen3.6:35b` (35B-A3B MoE; A/B candidate `qwen3.6:27b` dense), embeddings `qwen3-embedding` | Qwen3.6 (2026-04) targets agentic tool-calling; MoE with 3B active = fast background filing on the 5090. Eval harness makes swaps measurable. |
+| Models | Configurable. Defaults: agent `qwen3.6:35b` (35B-A3B MoE; A/B candidate `qwen3.6:27b` dense), embeddings `qwen3-embedding:8b` | Qwen3.6 (2026-04) targets agentic tool-calling; MoE with 3B active = fast background filing on the 5090. Eval harness makes swaps measurable. |
 | Learning loop (final phase) | (a) Self-tuning conventions: mnemo maintains its own instructions note in the vault and records lessons when corrected. (b) Usage-driven salience: retrieval log; hot notes rank higher and get dreamer attention; cold notes decay toward `archive/` | Chosen over filing metrics and skill acquisition. |
 | Starting state | Empty vault | No importers needed. |
 
