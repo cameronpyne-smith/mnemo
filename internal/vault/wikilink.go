@@ -8,23 +8,20 @@ import (
 var wikilinkRe = regexp.MustCompile(`\[\[([^\[\]]+)\]\]`)
 
 func ExtractWikilinks(body string) []string {
+	var links []string
 	matches := wikilinkRe.FindAllStringSubmatch(body, -1)
-	if matches == nil {
-		return nil
-	}
 	seen := make(map[string]bool, len(matches))
-	var targets []string
-	for _, m := range matches {
-		target := m[1]
-		if i := strings.IndexAny(target, "|#"); i >= 0 {
-			target = target[:i]
+	for _, match := range matches {
+		link := match[1]
+		if i := strings.IndexAny(link, "|#"); i != -1 {
+			link = link[:i]
 		}
-		target = strings.TrimSpace(target)
-		if target == "" || seen[target] {
+		link = strings.TrimSpace(link)
+		if link == "" || seen[link] {
 			continue
 		}
-		seen[target] = true
-		targets = append(targets, target)
+		links = append(links, link)
+		seen[link] = true
 	}
-	return targets
+	return links
 }

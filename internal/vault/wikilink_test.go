@@ -25,7 +25,7 @@ func TestExtractWikilinks(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			got := ExtractWikilinks(tt.body)
 			if !reflect.DeepEqual(got, tt.want) {
-				t.Errorf("ExtractWikilinks(%q) = %v, want %v", tt.body, got, tt.want)
+				t.Errorf("ExtractWikilinks(%q) = %q, want %v", tt.body, got, tt.want)
 			}
 		})
 	}
