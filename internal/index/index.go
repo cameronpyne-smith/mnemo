@@ -2,7 +2,8 @@ package index
 
 import (
 	"fmt"
-	"sort"
+	"maps"
+	"slices"
 	"sync"
 
 	"github.com/blevesearch/bleve/v2"
@@ -155,17 +156,13 @@ func (idx *Index) Backlinks(slug string) []string {
 	idx.mu.RLock()
 	defer idx.mu.RUnlock()
 
-	sources := make([]string, 0, len(idx.inbound[slug]))
-	for src := range idx.inbound[slug] {
-		sources = append(sources, src)
-	}
-	sort.Strings(sources)
-	return sources
+	return slices.Sorted(maps.Keys(idx.inbound[slug]))
 }
 
 func (idx *Index) Outbound(slug string) []string {
 	idx.mu.RLock()
 	defer idx.mu.RUnlock()
+
 	return append([]string(nil), idx.outbound[slug]...)
 }
 
