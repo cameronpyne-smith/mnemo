@@ -8,7 +8,10 @@ import (
 	"github.com/cameronpyne-smith/mnemo/internal/vault"
 )
 
-var ErrNotFound = errors.New("not found")
+var (
+	ErrNotFound = errors.New("not found")
+	ErrInvalid  = errors.New("invalid argument")
+)
 
 func (s *Store) Hubs() (*vault.Note, []*vault.Note, error) {
 	root, err := s.vault.Read(vault.FolderHubs, "root")

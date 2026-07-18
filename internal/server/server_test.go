@@ -23,7 +23,7 @@ func testServer(t *testing.T, token string) (*httptest.Server, *store.Store) {
 	if err != nil {
 		t.Fatalf("store.Open: %v", err)
 	}
-	srv := httptest.NewServer(New(st, nil, token))
+	srv := httptest.NewServer(New(st, nil, token, nil))
 	t.Cleanup(srv.Close)
 	return srv, st
 }

@@ -44,6 +44,10 @@ func Open(path string) (*Store, error) {
 }
 
 func (s *Store) Search(q string, limit int) ([]index.Hit, error) {
+	q = strings.TrimSpace(q)
+	if q == "" {
+		return nil, fmt.Errorf("search: empty query: %w", ErrInvalid)
+	}
 	return s.idx.Search(q, limit)
 }
 
@@ -82,7 +86,7 @@ func (s *Store) saveLocked(n *vault.Note) error {
 
 func (s *Store) Capture(content, source string) (string, error) {
 	if strings.TrimSpace(content) == "" {
-		return "", fmt.Errorf("capture: empty content")
+		return "", fmt.Errorf("capture: empty content: %w", ErrInvalid)
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()

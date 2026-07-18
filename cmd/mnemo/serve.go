@@ -14,6 +14,7 @@ import (
 
 	"github.com/cameronpyne-smith/mnemo/internal/agent"
 	"github.com/cameronpyne-smith/mnemo/internal/config"
+	"github.com/cameronpyne-smith/mnemo/internal/mcp"
 	"github.com/cameronpyne-smith/mnemo/internal/ollama"
 	"github.com/cameronpyne-smith/mnemo/internal/server"
 	"github.com/cameronpyne-smith/mnemo/internal/store"
@@ -62,7 +63,7 @@ func newServeCmd(configPath *string) *cobra.Command {
 
 			srv := &http.Server{
 				Addr:    cfg.Bind,
-				Handler: server.New(st, worker, cfg.Token),
+				Handler: server.New(st, worker, cfg.Token, mcp.Handler(st, worker, log)),
 			}
 			errCh := make(chan error, 1)
 			go func() {

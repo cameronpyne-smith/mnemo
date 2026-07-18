@@ -19,6 +19,7 @@ A second-brain agent. mnemo owns a vault of plain markdown notes, files whatever
 | Models | Configurable. Defaults: agent `qwen3.6:35b` (35B-A3B MoE; A/B candidate `qwen3.6:27b` dense), embeddings `qwen3-embedding:8b` | Qwen3.6 (2026-04) targets agentic tool-calling; MoE with 3B active = fast background filing on the 5090. Eval harness makes swaps measurable. |
 | Learning loop (final phase) | (a) Self-tuning conventions: mnemo maintains its own instructions note in the vault and records lessons when corrected. (b) Usage-driven salience: retrieval log; hot notes rank higher and get dreamer attention; cold notes decay toward `archive/` | Chosen over filing metrics and skill acquisition. |
 | Starting state | Empty vault | No importers needed. |
+| MCP topology | MCP server wraps `store.Store` in-process, mounted at `/mcp` on the same listener behind the same bearer auth — not a proxy over the HTTP API | One core, two front doors; no double serialization, no localhost hop, one port to expose on the tailnet. |
 
 ## Vault conventions
 
@@ -117,9 +118,9 @@ Each phase ends runnable and used-in-anger before the next starts.
 - [x] Filing eval harness: `MNEMO_OLLAMA_TESTS=<url> go test ./internal/agent -run Eval -v` — scores capture→file outcomes (facts preserved, inbox drained, hub reachability, no fragmentation)
 
 ### Phase 2 — Remote access + MCP (Claude Code integration)
-- [ ] Bearer-token auth middleware; bind to tailnet address
-- [ ] MCP server (official Go SDK, streamable HTTP) exposing the tool surface above
-- [ ] Snippet for consumer machines' CLAUDE.md documenting when/how to use the vault
+- [x] Bearer-token auth middleware (landed early in P1); bind to tailnet address = config `bind` value, no code
+- [ ] MCP server (official Go SDK, streamable HTTP) exposing the tool surface above — all six handlers done and tested; tool descriptions still placeholder
+- [x] Snippet for consumer machines' CLAUDE.md documenting when/how to use the vault (`docs/consumer-claude.md`)
 - [ ] Verify end-to-end from work machine: discover → read → capture → correct
 
 ### Phase 3 — Embeddings + semantic search

@@ -20,9 +20,12 @@ type Server struct {
 	token  string
 }
 
-func New(st *store.Store, worker *agent.Worker, token string) http.Handler {
+func New(st *store.Store, worker *agent.Worker, token string, mcp http.Handler) http.Handler {
 	s := &Server{store: st, worker: worker, token: token}
 	mux := http.NewServeMux()
+	if mcp != nil {
+		mux.Handle("/mcp", mcp)
+	}
 	mux.HandleFunc("GET /index", s.handleIndex)
 	mux.HandleFunc("GET /search", s.handleSearch)
 	mux.HandleFunc("GET /notes/{slug}", s.handleGet)
@@ -61,24 +64,13 @@ func (s *Server) handleIndex(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleSearch(w http.ResponseWriter, r *http.Request) {
-	q := r.URL.Query().Get("q")
-	if strings.TrimSpace(q) == "" {
-		writeError(w, http.StatusBadRequest, errors.New("q parameter is required"))
-		return
-	}
 	limit, _ := strconv.Atoi(r.URL.Query().Get("limit"))
-	hits, err := s.store.Search(q, limit)
+	hits, err := s.store.Search(r.URL.Query().Get("q"), limit)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, err)
+		writeError(w, statusFor(err), err)
 		return
 	}
-	resp := api.SearchResponse{Results: make([]api.SearchResult, 0, len(hits))}
-	for _, h := range hits {
-		resp.Results = append(resp.Results, api.SearchResult{
-			Slug: h.Slug, Folder: h.Folder, Description: h.Description, Score: h.Score,
-		})
-	}
-	writeJSON(w, http.StatusOK, resp)
+	writeJSON(w, http.StatusOK, api.FromHits(hits))
 }
 
 func (s *Server) handleGet(w http.ResponseWriter, r *http.Request) {
@@ -149,7 +141,7 @@ func (s *Server) handleCapture(w http.ResponseWriter, r *http.Request) {
 	}
 	slug, err := s.store.Capture(req.Content, req.Source)
 	if err != nil {
-		writeError(w, http.StatusBadRequest, err)
+		writeError(w, statusFor(err), err)
 		return
 	}
 	if s.worker != nil {
@@ -175,26 +167,18 @@ func (s *Server) handleStatus(w http.ResponseWriter, r *http.Request) {
 }
 
 func toAPINote(n *vault.Note, view *store.NoteView) api.Note {
-	out := api.Note{
-		Slug:        n.Slug,
-		Folder:      n.Folder,
-		Description: n.Frontmatter.Description,
-		Tags:        n.Frontmatter.Tags,
-		Type:        n.Type(),
-		Created:     n.Frontmatter.Created,
-		Updated:     n.Frontmatter.Updated,
-		Body:        n.Body,
+	if view == nil {
+		return api.FromNote(n, nil, nil)
 	}
-	if view != nil {
-		out.Links = view.Links
-		out.Backlinks = view.Backlinks
-	}
-	return out
+	return api.FromNote(n, view.Links, view.Backlinks)
 }
 
 func statusFor(err error) int {
 	if errors.Is(err, store.ErrNotFound) {
 		return http.StatusNotFound
+	}
+	if errors.Is(err, store.ErrInvalid) {
+		return http.StatusBadRequest
 	}
 	return http.StatusInternalServerError
 }

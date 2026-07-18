@@ -1,6 +1,7 @@
 package store
 
 import (
+	"errors"
 	"strings"
 	"testing"
 
@@ -45,6 +46,15 @@ func TestSaveSetsDatesAndIndexes(t *testing.T) {
 	hits, err := s.Search("birth", 10)
 	if err != nil || len(hits) == 0 {
 		t.Fatalf("Search after Save: hits=%v err=%v", hits, err)
+	}
+}
+
+func TestSearchRejectsBlankQuery(t *testing.T) {
+	s := testStore(t)
+	for _, q := range []string{"", "   "} {
+		if _, err := s.Search(q, 10); !errors.Is(err, ErrInvalid) {
+			t.Errorf("Search(%q): err = %v, want ErrInvalid", q, err)
+		}
 	}
 }
 
