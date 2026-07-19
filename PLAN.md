@@ -119,9 +119,9 @@ Each phase ends runnable and used-in-anger before the next starts.
 
 ### Phase 2 — Remote access + MCP (Claude Code integration)
 - [x] Bearer-token auth middleware (landed early in P1); bind to tailnet address = config `bind` value, no code
-- [ ] MCP server (official Go SDK, streamable HTTP) exposing the tool surface above — all six handlers done and tested; tool descriptions still placeholder
+- [x] MCP server (official Go SDK, streamable HTTP) exposing the tool surface above — all six handlers done and tested
 - [x] Snippet for consumer machines' CLAUDE.md documenting when/how to use the vault (`docs/consumer-claude.md`)
-- [ ] Verify end-to-end from work machine: discover → read → capture → correct
+- [x] Verify end-to-end from work machine: discover → read → capture → correct (verified 2026-07-19 over tailnet MCP; capture filed by agent, correction appended via vault_edit)
 
 ### Phase 3 — Embeddings + semantic search
 - [ ] Embedding pipeline: chunk = note (split oversized), content-hash cache on disk, re-embed only changed notes
