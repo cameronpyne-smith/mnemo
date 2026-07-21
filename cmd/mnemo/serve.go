@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"net"
 	"net/http"
 	"os"
 	"os/signal"
@@ -48,15 +49,20 @@ func newServeCmd(configPath *string) *cobra.Command {
 			defer stop()
 
 			var syncer *gitsync.Syncer
+			syncDone := make(chan struct{})
 			if cfg.Git.Enabled {
 				syncer = gitsync.New(cfg.Vault, cfg.Git.Remotes, log)
 				if err := syncer.Init(ctx); err != nil {
 					return fmt.Errorf("git redundancy: %w", err)
 				}
 				st.SetCommitter(syncer)
-				go syncer.Run(ctx)
+				go func() {
+					syncer.Run(ctx)
+					close(syncDone)
+				}()
 				log.Info("git redundancy enabled", "remotes", len(cfg.Git.Remotes))
 			} else {
+				close(syncDone)
 				log.Warn("git redundancy disabled — vault history is not being recorded")
 			}
 
@@ -78,6 +84,10 @@ func newServeCmd(configPath *string) *cobra.Command {
 			srv := &http.Server{
 				Addr:    cfg.Bind,
 				Handler: server.New(st, worker, cfg.Token, mcp.Handler(st, worker, log), syncer),
+				// Request contexts inherit the signal context so long-lived
+				// MCP streams end when the daemon is asked to stop; otherwise
+				// Shutdown waits its full timeout on them.
+				BaseContext: func(net.Listener) context.Context { return ctx },
 			}
 			errCh := make(chan error, 1)
 			go func() {
@@ -92,9 +102,15 @@ func newServeCmd(configPath *string) *cobra.Command {
 				log.Info("shutting down")
 				shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 				defer cancel()
-				if err := srv.Shutdown(shutdownCtx); err != nil && !errors.Is(err, http.ErrServerClosed) {
-					return err
+				if err := srv.Shutdown(shutdownCtx); err != nil {
+					if errors.Is(err, context.DeadlineExceeded) {
+						log.Warn("graceful shutdown timed out; closing remaining connections")
+						srv.Close()
+					} else if !errors.Is(err, http.ErrServerClosed) {
+						return err
+					}
 				}
+				<-syncDone
 				return nil
 			}
 		},
