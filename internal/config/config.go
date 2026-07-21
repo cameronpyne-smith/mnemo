@@ -12,7 +12,13 @@ type Config struct {
 	Vault  string `toml:"vault"`
 	Bind   string `toml:"bind"`
 	Token  string `toml:"token"`
+	Git    Git    `toml:"git"`
 	Ollama Ollama `toml:"ollama"`
+}
+
+type Git struct {
+	Enabled bool              `toml:"enabled"`
+	Remotes map[string]string `toml:"remotes"`
 }
 
 type Ollama struct {
@@ -24,6 +30,7 @@ type Ollama struct {
 func Default() Config {
 	return Config{
 		Bind: "127.0.0.1:7920",
+		Git:  Git{Enabled: true},
 		Ollama: Ollama{
 			BaseURL:    "http://localhost:11434",
 			AgentModel: "qwen3.6:35b",

@@ -72,7 +72,7 @@ func TestEvalFiling(t *testing.T) {
 			f := &Filer{Store: st, LLM: ollama.New(base), Model: model}
 
 			for _, dump := range ec.dumps {
-				slug, err := st.Capture(dump, "eval")
+				slug, err := st.Capture("test", dump, "eval")
 				if err != nil {
 					t.Fatalf("Capture: %v", err)
 				}

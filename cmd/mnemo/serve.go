@@ -14,6 +14,7 @@ import (
 
 	"github.com/cameronpyne-smith/mnemo/internal/agent"
 	"github.com/cameronpyne-smith/mnemo/internal/config"
+	"github.com/cameronpyne-smith/mnemo/internal/gitsync"
 	"github.com/cameronpyne-smith/mnemo/internal/mcp"
 	"github.com/cameronpyne-smith/mnemo/internal/ollama"
 	"github.com/cameronpyne-smith/mnemo/internal/server"
@@ -46,6 +47,19 @@ func newServeCmd(configPath *string) *cobra.Command {
 			ctx, stop := signal.NotifyContext(cmd.Context(), os.Interrupt)
 			defer stop()
 
+			var syncer *gitsync.Syncer
+			if cfg.Git.Enabled {
+				syncer = gitsync.New(cfg.Vault, cfg.Git.Remotes, log)
+				if err := syncer.Init(ctx); err != nil {
+					return fmt.Errorf("git redundancy: %w", err)
+				}
+				st.SetCommitter(syncer)
+				go syncer.Run(ctx)
+				log.Info("git redundancy enabled", "remotes", len(cfg.Git.Remotes))
+			} else {
+				log.Warn("git redundancy disabled — vault history is not being recorded")
+			}
+
 			var worker *agent.Worker
 			if !noFiling {
 				filer := &agent.Filer{
@@ -63,7 +77,7 @@ func newServeCmd(configPath *string) *cobra.Command {
 
 			srv := &http.Server{
 				Addr:    cfg.Bind,
-				Handler: server.New(st, worker, cfg.Token, mcp.Handler(st, worker, log)),
+				Handler: server.New(st, worker, cfg.Token, mcp.Handler(st, worker, log), syncer),
 			}
 			errCh := make(chan error, 1)
 			go func() {

@@ -62,12 +62,27 @@ type FilingStatus struct {
 	InFlight  int  `json:"in_flight"`
 }
 
+type GitRemoteStatus struct {
+	Name      string `json:"name"`
+	Lag       int    `json:"lag"`
+	LastPush  string `json:"last_push,omitempty"`
+	LastError string `json:"last_error,omitempty"`
+}
+
+type GitStatus struct {
+	Enabled   bool              `json:"enabled"`
+	Commits   int               `json:"commits"`
+	LastError string            `json:"last_error,omitempty"`
+	Remotes   []GitRemoteStatus `json:"remotes,omitempty"`
+}
+
 type StatusResponse struct {
 	Notes    int          `json:"notes"`
 	Hubs     int          `json:"hubs"`
 	Inbox    int          `json:"inbox"`
 	Archived int          `json:"archived"`
 	Filing   FilingStatus `json:"filing"`
+	Git      GitStatus    `json:"git"`
 }
 
 type ErrorResponse struct {

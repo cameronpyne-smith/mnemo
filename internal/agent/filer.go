@@ -94,7 +94,7 @@ func (f *Filer) File(ctx context.Context, captureSlug string) (*Result, error) {
 			if call.Function.Name == "finish" {
 				result := parseFinish(call.Function.Arguments)
 				result.Turns = turn
-				if err := f.Store.ArchiveCapture(captureSlug, result.FiledInto); err != nil {
+				if err := f.Store.ArchiveCapture(store.ActorFiling, captureSlug, result.FiledInto); err != nil {
 					return nil, fmt.Errorf("filing %s: archiving capture: %w", captureSlug, err)
 				}
 				return result, nil
@@ -202,7 +202,7 @@ func (f *Filer) executeErr(name string, args map[string]any) (string, error) {
 		n.Frontmatter.Description = description
 		n.Frontmatter.Tags = tags
 		n.Body = body
-		if err := f.Store.Save(n); err != nil {
+		if err := f.Store.Save(store.ActorFiling, n); err != nil {
 			return "", err
 		}
 		return fmt.Sprintf("wrote [[%s]]", slug), nil
@@ -214,7 +214,7 @@ func (f *Filer) executeErr(name string, args map[string]any) (string, error) {
 		if _, err := f.Store.Get(note); err != nil {
 			return "", fmt.Errorf("note %s does not exist; write it first", note)
 		}
-		if err := f.Store.AddToHub(hub, note, description); err != nil {
+		if err := f.Store.AddToHub(store.ActorFiling, hub, note, description); err != nil {
 			return "", err
 		}
 		return fmt.Sprintf("added [[%s]] to hub [[%s]]", note, hub), nil

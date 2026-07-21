@@ -31,13 +31,14 @@ func (s *Store) Hubs() (*vault.Note, []*vault.Note, error) {
 	return root, hubs, nil
 }
 
-func (s *Store) AddToHub(hubSlug, noteSlug, description string) error {
+func (s *Store) AddToHub(actor, hubSlug, noteSlug, description string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
 	if !vault.ValidSlug(hubSlug) {
 		return fmt.Errorf("add to hub: invalid hub slug %q", hubSlug)
 	}
+	paths := []string{notePath(vault.FolderHubs, hubSlug)}
 	hub, err := s.vault.Read(vault.FolderHubs, hubSlug)
 	if err != nil {
 		hub = &vault.Note{
@@ -52,6 +53,7 @@ func (s *Store) AddToHub(hubSlug, noteSlug, description string) error {
 		if err := s.registerHubInRootLocked(hub); err != nil {
 			return err
 		}
+		paths = append(paths, notePath(vault.FolderHubs, "root"))
 	}
 
 	for _, existing := range hub.Links() {
@@ -60,7 +62,11 @@ func (s *Store) AddToHub(hubSlug, noteSlug, description string) error {
 		}
 	}
 	hub.Body = appendEntry(hub.Body, noteSlug, description)
-	return s.saveLocked(hub)
+	if err := s.saveLocked(hub); err != nil {
+		return err
+	}
+	s.record(actor, fmt.Sprintf("hub %s += %s", hubSlug, noteSlug), paths...)
+	return nil
 }
 
 func (s *Store) registerHubInRootLocked(hub *vault.Note) error {

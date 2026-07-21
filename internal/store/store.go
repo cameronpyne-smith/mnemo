@@ -12,11 +12,35 @@ import (
 )
 
 type Store struct {
-	mu    sync.Mutex
-	vault *vault.Vault
-	idx   *index.Index
-	now   func() time.Time
+	mu        sync.Mutex
+	vault     *vault.Vault
+	idx       *index.Index
+	now       func() time.Time
+	committer Committer
 }
+
+// Committer records a completed mutation in the redundancy layer. Called
+// while the store's mutex is held so commits are attributed exactly; it must
+// not call back into the store and must never fail the mutation.
+type Committer interface {
+	Commit(actor, action string, paths []string)
+}
+
+const (
+	ActorAPI    = "api"
+	ActorMCP    = "mcp"
+	ActorFiling = "filing"
+)
+
+func (s *Store) SetCommitter(c Committer) { s.committer = c }
+
+func (s *Store) record(actor, action string, paths ...string) {
+	if s.committer != nil {
+		s.committer.Commit(actor, action, paths)
+	}
+}
+
+func notePath(folder, slug string) string { return folder + "/" + slug + ".md" }
 
 type NoteView struct {
 	Note      *vault.Note
@@ -63,10 +87,14 @@ func (s *Store) Get(slug string) (*NoteView, error) {
 	return &NoteView{Note: n, Links: n.Links(), Backlinks: s.idx.Backlinks(slug)}, nil
 }
 
-func (s *Store) Save(n *vault.Note) error {
+func (s *Store) Save(actor string, n *vault.Note) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	return s.saveLocked(n)
+	if err := s.saveLocked(n); err != nil {
+		return err
+	}
+	s.record(actor, "write "+n.Slug, notePath(n.Folder, n.Slug))
+	return nil
 }
 
 func (s *Store) saveLocked(n *vault.Note) error {
@@ -84,7 +112,7 @@ func (s *Store) saveLocked(n *vault.Note) error {
 	return nil
 }
 
-func (s *Store) Capture(content, source string) (string, error) {
+func (s *Store) Capture(actor, content, source string) (string, error) {
 	if strings.TrimSpace(content) == "" {
 		return "", fmt.Errorf("capture: empty content: %w", ErrInvalid)
 	}
@@ -94,6 +122,11 @@ func (s *Store) Capture(content, source string) (string, error) {
 	if err := s.vault.Write(n); err != nil {
 		return "", err
 	}
+	action := "capture " + n.Slug
+	if source != "" {
+		action += " (source: " + source + ")"
+	}
+	s.record(actor, action, notePath(vault.FolderInbox, n.Slug))
 	return n.Slug, nil
 }
 
@@ -110,7 +143,7 @@ func (s *Store) ListInbox() ([]*vault.Note, error) {
 	return notes, nil
 }
 
-func (s *Store) ArchiveCapture(slug string, filedInto []string) error {
+func (s *Store) ArchiveCapture(actor, slug string, filedInto []string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -127,10 +160,15 @@ func (s *Store) ArchiveCapture(slug string, filedInto []string) error {
 	if err := s.saveLocked(n); err != nil {
 		return err
 	}
-	return s.vault.Delete(vault.FolderInbox, slug)
+	if err := s.vault.Delete(vault.FolderInbox, slug); err != nil {
+		return err
+	}
+	s.record(actor, fmt.Sprintf("archive %s (filed into %s)", slug, strings.Join(filedInto, ", ")),
+		notePath(vault.FolderArchive, slug), notePath(vault.FolderInbox, slug))
+	return nil
 }
 
-func (s *Store) Rename(oldSlug, newSlug string) error {
+func (s *Store) Rename(actor, oldSlug, newSlug string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -145,6 +183,8 @@ func (s *Store) Rename(oldSlug, newSlug string) error {
 		return fmt.Errorf("rename: %s already exists", newSlug)
 	}
 
+	paths := []string{notePath(folder, oldSlug), notePath(folder, newSlug)}
+	rewritten := 0
 	for _, src := range s.idx.Backlinks(oldSlug) {
 		srcFolder, ok := s.vault.Locate(src)
 		if !ok {
@@ -158,6 +198,8 @@ func (s *Store) Rename(oldSlug, newSlug string) error {
 		if err := s.saveLocked(srcNote); err != nil {
 			return fmt.Errorf("rename: rewriting links in %s: %w", src, err)
 		}
+		paths = append(paths, notePath(srcFolder, src))
+		rewritten++
 	}
 
 	n, err := s.vault.Read(folder, oldSlug)
@@ -172,8 +214,11 @@ func (s *Store) Rename(oldSlug, newSlug string) error {
 		return err
 	}
 	if folder == vault.FolderNotes || folder == vault.FolderHubs {
-		return s.idx.RemoveNote(oldSlug)
+		if err := s.idx.RemoveNote(oldSlug); err != nil {
+			return err
+		}
 	}
+	s.record(actor, fmt.Sprintf("rename %s -> %s (%d links rewritten)", oldSlug, newSlug, rewritten), paths...)
 	return nil
 }
 

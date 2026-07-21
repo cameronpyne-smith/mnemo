@@ -80,7 +80,7 @@ func contentText(cs []sdk.Content) string {
 
 func saveNote(t *testing.T, st *store.Store, slug, description, body string) {
 	t.Helper()
-	err := st.Save(&vault.Note{
+	err := st.Save("test", &vault.Note{
 		Slug: slug, Folder: vault.FolderNotes,
 		Frontmatter: vault.Frontmatter{Description: description},
 		Body:        body,
@@ -110,7 +110,7 @@ func TestToolsRegistered(t *testing.T) {
 func TestVaultIndex(t *testing.T) {
 	sess, st := testSession(t)
 	saveNote(t, st, "birth-plan", "The plan.", "p\n")
-	if err := st.AddToHub("health", "birth-plan", "the plan"); err != nil {
+	if err := st.AddToHub("test", "health", "birth-plan", "the plan"); err != nil {
 		t.Fatalf("AddToHub: %v", err)
 	}
 

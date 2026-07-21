@@ -68,7 +68,7 @@ func (t *toolServer) links(ctx context.Context, req *sdk.CallToolRequest, args S
 }
 
 func (t *toolServer) capture(ctx context.Context, req *sdk.CallToolRequest, args CaptureArgs) (*sdk.CallToolResult, api.CaptureResponse, error) {
-	slug, err := t.store.Capture(args.Content, args.Source)
+	slug, err := t.store.Capture(store.ActorMCP, args.Content, args.Source)
 	if err != nil {
 		return nil, api.CaptureResponse{}, err
 	}
@@ -79,7 +79,7 @@ func (t *toolServer) capture(ctx context.Context, req *sdk.CallToolRequest, args
 }
 
 func (t *toolServer) edit(ctx context.Context, req *sdk.CallToolRequest, args EditArgs) (*sdk.CallToolResult, api.Note, error) {
-	err := t.store.EditNote(args.Slug, store.Edit{
+	err := t.store.EditNote(store.ActorMCP, args.Slug, store.Edit{
 		Description: args.Description, Tags: args.Tags, Body: args.Body, Append: args.Append,
 	})
 	if err != nil {

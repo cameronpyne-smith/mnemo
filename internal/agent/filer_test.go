@@ -60,7 +60,7 @@ func TestFileHappyPath(t *testing.T) {
 	}}
 	f, st := testFiler(t, llm)
 
-	slug, err := st.Capture("Buy vanilla protein powder from MyProtein", "test")
+	slug, err := st.Capture("test", "Buy vanilla protein powder from MyProtein", "test")
 	if err != nil {
 		t.Fatalf("Capture: %v", err)
 	}
@@ -105,7 +105,7 @@ func TestFileToolErrorsAreReported(t *testing.T) {
 	}}
 	f, st := testFiler(t, llm)
 
-	slug, err := st.Capture("something", "test")
+	slug, err := st.Capture("test", "something", "test")
 	if err != nil {
 		t.Fatalf("Capture: %v", err)
 	}
@@ -124,7 +124,7 @@ func TestFileNudgesThenAborts(t *testing.T) {
 	}}
 	f, st := testFiler(t, llm)
 
-	slug, err := st.Capture("something", "test")
+	slug, err := st.Capture("test", "something", "test")
 	if err != nil {
 		t.Fatalf("Capture: %v", err)
 	}
@@ -142,7 +142,7 @@ func TestFileNudgesThenAborts(t *testing.T) {
 
 func TestWriteNoteCannotOverwriteHub(t *testing.T) {
 	f, st := testFiler(t, &scriptedLLM{})
-	if err := st.AddToHub("health", "x", "d"); err == nil {
+	if err := st.AddToHub("test", "health", "x", "d"); err == nil {
 		t.Log("hub add failed as expected (note missing), creating hub directly")
 	}
 	out := f.execute("write_note", map[string]any{"slug": "root", "description": "d", "body": "b"})

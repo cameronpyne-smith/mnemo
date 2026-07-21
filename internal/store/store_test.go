@@ -23,7 +23,7 @@ func testStore(t *testing.T) *Store {
 
 func mustSave(t *testing.T, s *Store, n *vault.Note) {
 	t.Helper()
-	if err := s.Save(n); err != nil {
+	if err := s.Save("test", n); err != nil {
 		t.Fatalf("Save(%s): %v", n.Slug, err)
 	}
 }
@@ -60,7 +60,7 @@ func TestSearchRejectsBlankQuery(t *testing.T) {
 
 func TestCaptureAndArchive(t *testing.T) {
 	s := testStore(t)
-	slug, err := s.Capture("Buy vanilla protein powder", "test")
+	slug, err := s.Capture("test", "Buy vanilla protein powder", "test")
 	if err != nil {
 		t.Fatalf("Capture: %v", err)
 	}
@@ -73,7 +73,7 @@ func TestCaptureAndArchive(t *testing.T) {
 		t.Fatalf("ListInbox = %v, %v; want one item", inbox, err)
 	}
 
-	if err := s.ArchiveCapture(slug, []string{"shopping"}); err != nil {
+	if err := s.ArchiveCapture("test", slug, []string{"shopping"}); err != nil {
 		t.Fatalf("ArchiveCapture: %v", err)
 	}
 	inbox, err = s.ListInbox()
@@ -95,7 +95,7 @@ func TestCaptureAndArchive(t *testing.T) {
 
 func TestCaptureRejectsEmpty(t *testing.T) {
 	s := testStore(t)
-	if _, err := s.Capture("  \n", "test"); err == nil {
+	if _, err := s.Capture("test", "  \n", "test"); err == nil {
 		t.Fatal("Capture accepted empty content")
 	}
 }
@@ -112,7 +112,7 @@ func TestRenameRewritesBacklinks(t *testing.T) {
 		Body:        "See [[birth-plan]], [[birth-plan|the plan]] and [[birth-plan#risks]].\n",
 	})
 
-	if err := s.Rename("birth-plan", "labour-plan"); err != nil {
+	if err := s.Rename("test", "birth-plan", "labour-plan"); err != nil {
 		t.Fatalf("Rename: %v", err)
 	}
 
@@ -141,7 +141,7 @@ func TestRenameRejectsCollision(t *testing.T) {
 	s := testStore(t)
 	mustSave(t, s, &vault.Note{Slug: "a", Folder: vault.FolderNotes, Frontmatter: vault.Frontmatter{Description: "a"}, Body: "a\n"})
 	mustSave(t, s, &vault.Note{Slug: "b", Folder: vault.FolderNotes, Frontmatter: vault.Frontmatter{Description: "b"}, Body: "b\n"})
-	if err := s.Rename("a", "b"); err == nil {
+	if err := s.Rename("test", "a", "b"); err == nil {
 		t.Fatal("Rename allowed a collision")
 	}
 }
@@ -153,7 +153,7 @@ func TestAddToHubCreatesAndRegisters(t *testing.T) {
 		Frontmatter: vault.Frontmatter{Description: "The plan."}, Body: "Plan.\n",
 	})
 
-	if err := s.AddToHub("health", "birth-plan", "the birth plan"); err != nil {
+	if err := s.AddToHub("test", "health", "birth-plan", "the birth plan"); err != nil {
 		t.Fatalf("AddToHub: %v", err)
 	}
 
@@ -179,7 +179,7 @@ func TestAddToHubCreatesAndRegisters(t *testing.T) {
 		t.Error("root hub placeholder not removed")
 	}
 
-	if err := s.AddToHub("health", "birth-plan", "dup"); err != nil {
+	if err := s.AddToHub("test", "health", "birth-plan", "dup"); err != nil {
 		t.Fatalf("second AddToHub: %v", err)
 	}
 	hub, _ = s.Get("health")
@@ -197,7 +197,7 @@ func TestEditNote(t *testing.T) {
 
 	desc := "new description"
 	appendText := "line two"
-	if err := s.EditNote("n", Edit{Description: &desc, Append: &appendText}); err != nil {
+	if err := s.EditNote("test", "n", Edit{Description: &desc, Append: &appendText}); err != nil {
 		t.Fatalf("EditNote: %v", err)
 	}
 	view, err := s.Get("n")
@@ -219,7 +219,7 @@ func TestEditNote(t *testing.T) {
 
 func TestStatus(t *testing.T) {
 	s := testStore(t)
-	if _, err := s.Capture("something", "test"); err != nil {
+	if _, err := s.Capture("test", "something", "test"); err != nil {
 		t.Fatalf("Capture: %v", err)
 	}
 	st, err := s.Status()

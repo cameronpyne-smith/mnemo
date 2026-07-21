@@ -20,6 +20,7 @@ A second-brain agent. mnemo owns a vault of plain markdown notes, files whatever
 | Learning loop (final phase) | (a) Self-tuning conventions: mnemo maintains its own instructions note in the vault and records lessons when corrected. (b) Usage-driven salience: retrieval log; hot notes rank higher and get dreamer attention; cold notes decay toward `archive/` | Chosen over filing metrics and skill acquisition. |
 | Starting state | Empty vault | No importers needed. |
 | MCP topology | MCP server wraps `store.Store` in-process, mounted at `/mcp` on the same listener behind the same bearer auth — not a proxy over the HTTP API | One core, two front doors; no double serialization, no localhost hop, one port to expose on the tailnet. |
+| Redundancy (2026-07-21) | Vault is a git repo. Daemon auto-commits every mutation via the system git CLI (os/exec, no Go deps) and pushes async to an append-only bare remote on an external drive (BitLocker To Go); personal-machine tailnet remote deferred. No snapshot tooling, no third-party hosts. | Point-in-time history defends against bad LLM writes — mirrors/sync replicate the damage. obsidian-git precedent: git fits live vaults incl. foreign edits. System git over go-git: zero deps, reference implementation, and real `gc`/`maintenance` — go-git can't repack, so per-mutation commits bloat unboundedly; git presence verified at startup. `receive.denyNonFastForwards` + `receive.denyDeletes` make remotes append-only even from a compromised vault machine. Plaintext never leaves owned hardware. Git-everywhere beats nightly snapshots for granularity (per-edit revert, seconds of lag); the uncovered scenario is simultaneous house loss of all copies — offsite decision deferred. |
 
 ## Vault conventions
 
@@ -122,6 +123,15 @@ Each phase ends runnable and used-in-anger before the next starts.
 - [x] MCP server (official Go SDK, streamable HTTP) exposing the tool surface above — all six handlers done and tested
 - [x] Snippet for consumer machines' CLAUDE.md documenting when/how to use the vault (`docs/consumer-claude.md`)
 - [x] Verify end-to-end from work machine: discover → read → capture → correct (verified 2026-07-19 over tailnet MCP; capture filed by agent, correction appended via vault_edit)
+
+### Phase 2.5 — Redundancy (must land before the dreamer gets write access)
+- [x] Vault is a git repo; daemon auto-commits its own mutations with actor-tagged messages (system git CLI via os/exec — startup check fails loud if git missing; `git gc --auto` once at startup, since commit-only repos never trigger git's auto-packing); external edits are the user's to commit — pathspec-limited commits keep them out of daemon history; baseline commit only when the repo is first created; embedding cache + write temp files gitignored
+- [x] Async push queue: push all remotes after each commit; retry with backoff (30s→15m) while a remote is unreachable; full catch-up on reconnect; per-remote lag (commits ahead) surfaced in `mnemo status` + `/status`
+- [ ] Bare repo on external drive (BitLocker To Go); `receive.denyNonFastForwards` + `receive.denyDeletes` — `mnemo backup init <path>` creates and registers it; run on the vault machine
+- [ ] (deferred) Bare repo on personal machine — OpenSSH on tailnet only, key-only auth, same receive protections; revisit once the external-drive remote proves out
+- [ ] BitLocker on the vault machine volume holding the vault
+- [ ] Restore drill documented and performed: single-note rollback via git, full-vault clone from each remote; periodic `git fsck` on remotes
+- [ ] Decide offsite story for the house-loss scenario (work-machine remote / encrypted bundle drop / accept risk)
 
 ### Phase 3 — Embeddings + semantic search
 - [ ] Embedding pipeline: chunk = note (split oversized), content-hash cache on disk, re-embed only changed notes

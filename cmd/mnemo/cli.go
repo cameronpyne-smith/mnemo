@@ -167,6 +167,30 @@ func newStatusCmd(configPath *string) *cobra.Command {
 			} else {
 				fmt.Fprintln(out, "filing: disabled")
 			}
+			if st.Git.Enabled {
+				fmt.Fprintf(out, "git: %d commits this session", st.Git.Commits)
+				if st.Git.LastError != "" {
+					fmt.Fprintf(out, " (last error: %s)", st.Git.LastError)
+				}
+				fmt.Fprintln(out)
+				for _, rm := range st.Git.Remotes {
+					fmt.Fprintf(out, "  remote %s: ", rm.Name)
+					if rm.Lag == 0 {
+						fmt.Fprint(out, "up to date")
+					} else {
+						fmt.Fprintf(out, "%d commit(s) to push", rm.Lag)
+					}
+					if rm.LastPush != "" {
+						fmt.Fprintf(out, ", last push %s", rm.LastPush)
+					}
+					if rm.LastError != "" {
+						fmt.Fprintf(out, ", error: %s", rm.LastError)
+					}
+					fmt.Fprintln(out)
+				}
+			} else {
+				fmt.Fprintln(out, "git: disabled")
+			}
 			return nil
 		},
 	}

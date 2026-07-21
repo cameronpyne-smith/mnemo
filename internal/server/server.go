@@ -7,9 +7,11 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/cameronpyne-smith/mnemo/internal/agent"
 	"github.com/cameronpyne-smith/mnemo/internal/api"
+	"github.com/cameronpyne-smith/mnemo/internal/gitsync"
 	"github.com/cameronpyne-smith/mnemo/internal/store"
 	"github.com/cameronpyne-smith/mnemo/internal/vault"
 )
@@ -18,10 +20,11 @@ type Server struct {
 	store  *store.Store
 	worker *agent.Worker
 	token  string
+	sync   *gitsync.Syncer
 }
 
-func New(st *store.Store, worker *agent.Worker, token string, mcp http.Handler) http.Handler {
-	s := &Server{store: st, worker: worker, token: token}
+func New(st *store.Store, worker *agent.Worker, token string, mcp http.Handler, sync *gitsync.Syncer) http.Handler {
+	s := &Server{store: st, worker: worker, token: token, sync: sync}
 	mux := http.NewServeMux()
 	if mcp != nil {
 		mux.Handle("/mcp", mcp)
@@ -100,7 +103,7 @@ func (s *Server) handleEdit(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	slug := r.PathValue("slug")
-	err := s.store.EditNote(slug, store.Edit{
+	err := s.store.EditNote(store.ActorAPI, slug, store.Edit{
 		Description: req.Description, Tags: req.Tags, Body: req.Body, Append: req.Append,
 	})
 	if err != nil {
@@ -121,7 +124,7 @@ func (s *Server) handleRename(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, err)
 		return
 	}
-	if err := s.store.Rename(r.PathValue("slug"), req.To); err != nil {
+	if err := s.store.Rename(store.ActorAPI, r.PathValue("slug"), req.To); err != nil {
 		writeError(w, statusFor(err), err)
 		return
 	}
@@ -139,7 +142,7 @@ func (s *Server) handleCapture(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, err)
 		return
 	}
-	slug, err := s.store.Capture(req.Content, req.Source)
+	slug, err := s.store.Capture(store.ActorAPI, req.Content, req.Source)
 	if err != nil {
 		writeError(w, statusFor(err), err)
 		return
@@ -162,6 +165,19 @@ func (s *Server) handleStatus(w http.ResponseWriter, r *http.Request) {
 	if s.worker != nil {
 		processed, failed, inflight := s.worker.Stats()
 		resp.Filing = api.FilingStatus{Enabled: true, Processed: processed, Failed: failed, InFlight: inflight}
+	}
+	if s.sync != nil {
+		gs := s.sync.Stats(r.Context())
+		resp.Git = api.GitStatus{Enabled: true, Commits: gs.Commits, LastError: gs.LastError}
+		for _, rm := range gs.Remotes {
+			lastPush := ""
+			if !rm.LastPush.IsZero() {
+				lastPush = rm.LastPush.Format(time.RFC3339)
+			}
+			resp.Git.Remotes = append(resp.Git.Remotes, api.GitRemoteStatus{
+				Name: rm.Name, Lag: rm.Lag, LastPush: lastPush, LastError: rm.LastError,
+			})
+		}
 	}
 	writeJSON(w, http.StatusOK, resp)
 }

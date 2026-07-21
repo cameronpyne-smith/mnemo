@@ -23,7 +23,7 @@ func testServer(t *testing.T, token string) (*httptest.Server, *store.Store) {
 	if err != nil {
 		t.Fatalf("store.Open: %v", err)
 	}
-	srv := httptest.NewServer(New(st, nil, token, nil))
+	srv := httptest.NewServer(New(st, nil, token, nil, nil))
 	t.Cleanup(srv.Close)
 	return srv, st
 }
@@ -67,7 +67,7 @@ func TestCaptureSearchGetFlow(t *testing.T) {
 		t.Fatalf("capture: code=%d resp=%+v", code, captured)
 	}
 
-	if err := st.Save(&vault.Note{
+	if err := st.Save("test", &vault.Note{
 		Slug: "birth-plan", Folder: vault.FolderNotes,
 		Frontmatter: vault.Frontmatter{Description: "Plan for the birth."},
 		Body:        "Details here.\n",
@@ -95,7 +95,7 @@ func TestCaptureSearchGetFlow(t *testing.T) {
 
 func TestEditRenameStatusFlow(t *testing.T) {
 	srv, st := testServer(t, "")
-	if err := st.Save(&vault.Note{
+	if err := st.Save("test", &vault.Note{
 		Slug: "n", Folder: vault.FolderNotes,
 		Frontmatter: vault.Frontmatter{Description: "old"}, Body: "body\n",
 	}); err != nil {
@@ -124,13 +124,13 @@ func TestEditRenameStatusFlow(t *testing.T) {
 
 func TestIndexEndpoint(t *testing.T) {
 	srv, st := testServer(t, "")
-	if err := st.Save(&vault.Note{
+	if err := st.Save("test", &vault.Note{
 		Slug: "birth-plan", Folder: vault.FolderNotes,
 		Frontmatter: vault.Frontmatter{Description: "The plan."}, Body: "p\n",
 	}); err != nil {
 		t.Fatalf("Save: %v", err)
 	}
-	if err := st.AddToHub("health", "birth-plan", "the plan"); err != nil {
+	if err := st.AddToHub("test", "health", "birth-plan", "the plan"); err != nil {
 		t.Fatalf("AddToHub: %v", err)
 	}
 

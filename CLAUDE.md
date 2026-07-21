@@ -24,6 +24,7 @@ Go daemon that manages a second-brain vault of plain markdown notes: captures du
 
 - Single module, single binary (`cmd/mnemo`), packages under `internal/` per the layout in PLAN.md.
 - Stdlib-first. Approved deps: bleve/v2, yaml.v3, BurntSushi/toml, official MCP Go SDK, cobra (CLI), a Telegram lib (Phase 5). Anything else needs justification.
+- The redundancy layer (Phase 2.5) shells out to the system `git` binary via os/exec — assumed installed on the vault machine, verified at daemon startup. Not a Go dependency; do not add a git library.
 - Table-driven tests; vault fixtures under `testdata/`. Tests needing a live ollama are gated behind `MNEMO_OLLAMA_TESTS=<base-url>` (skip by default; `MNEMO_OLLAMA_MODEL`/`MNEMO_OLLAMA_EMBED_MODEL` override defaults).
 - Errors wrapped with `fmt.Errorf("...: %w", err)`; no panics outside `main`.
 - All LLM I/O behind interfaces (`internal/ollama` client is the only implementation for now).

@@ -12,7 +12,7 @@ type Edit struct {
 	Append      *string
 }
 
-func (s *Store) EditNote(slug string, edit Edit) error {
+func (s *Store) EditNote(actor, slug string, edit Edit) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -24,14 +24,18 @@ func (s *Store) EditNote(slug string, edit Edit) error {
 	if err != nil {
 		return err
 	}
+	var changed []string
 	if edit.Description != nil {
 		n.Frontmatter.Description = *edit.Description
+		changed = append(changed, "description")
 	}
 	if edit.Tags != nil {
 		n.Frontmatter.Tags = *edit.Tags
+		changed = append(changed, "tags")
 	}
 	if edit.Body != nil {
 		n.Body = *edit.Body
+		changed = append(changed, "body")
 	}
 	if edit.Append != nil {
 		text := strings.TrimRight(*edit.Append, "\n")
@@ -39,6 +43,11 @@ func (s *Store) EditNote(slug string, edit Edit) error {
 			n.Body += "\n"
 		}
 		n.Body += text + "\n"
+		changed = append(changed, "append")
 	}
-	return s.saveLocked(n)
+	if err := s.saveLocked(n); err != nil {
+		return err
+	}
+	s.record(actor, fmt.Sprintf("edit %s (%s)", slug, strings.Join(changed, ", ")), notePath(folder, slug))
+	return nil
 }
