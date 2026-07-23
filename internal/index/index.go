@@ -25,6 +25,7 @@ type Index struct {
 	folders  map[string]string
 	outbound map[string][]string
 	inbound  map[string]map[string]bool
+	vectors  map[string][]float32
 }
 
 func New() (*Index, error) {
@@ -37,6 +38,7 @@ func New() (*Index, error) {
 		folders:  make(map[string]string),
 		outbound: make(map[string][]string),
 		inbound:  make(map[string]map[string]bool),
+		vectors:  make(map[string][]float32),
 	}, nil
 }
 
@@ -94,8 +96,31 @@ func (idx *Index) RemoveNote(slug string) error {
 		return fmt.Errorf("removing note %s from index: %w", slug, err)
 	}
 	delete(idx.folders, slug)
+	delete(idx.vectors, slug)
 	idx.removeEdgesLocked(slug)
 	return nil
+}
+
+func (idx *Index) SetVector(slug string, vec []float32) {
+	idx.mu.Lock()
+	defer idx.mu.Unlock()
+	idx.vectors[slug] = vec
+}
+
+func (idx *Index) RemoveVector(slug string) {
+	idx.mu.Lock()
+	defer idx.mu.Unlock()
+	delete(idx.vectors, slug)
+}
+
+func (idx *Index) Vectors() []DocVector {
+	idx.mu.RLock()
+	defer idx.mu.RUnlock()
+	out := make([]DocVector, 0, len(idx.vectors))
+	for _, slug := range slices.Sorted(maps.Keys(idx.vectors)) {
+		out = append(out, DocVector{Slug: slug, Vec: idx.vectors[slug]})
+	}
+	return out
 }
 
 func (idx *Index) removeEdgesLocked(slug string) {

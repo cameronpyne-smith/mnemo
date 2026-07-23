@@ -94,6 +94,29 @@ func TestReindexReplacesEdges(t *testing.T) {
 	}
 }
 
+func TestVectorBookkeeping(t *testing.T) {
+	idx := testIndex(t)
+	idx.SetVector("birth-plan", []float32{1, 0})
+	idx.SetVector("hospital-bag", []float32{0, 1})
+
+	got := idx.Vectors()
+	if len(got) != 2 || got[0].Slug != "birth-plan" || got[1].Slug != "hospital-bag" {
+		t.Errorf("Vectors = %v, want birth-plan then hospital-bag", got)
+	}
+
+	idx.RemoveVector("birth-plan")
+	if got := idx.Vectors(); len(got) != 1 || got[0].Slug != "hospital-bag" {
+		t.Errorf("Vectors after RemoveVector = %v", got)
+	}
+
+	if err := idx.RemoveNote("hospital-bag"); err != nil {
+		t.Fatalf("RemoveNote: %v", err)
+	}
+	if got := idx.Vectors(); len(got) != 0 {
+		t.Errorf("Vectors after RemoveNote = %v, want empty", got)
+	}
+}
+
 func TestRemoveNote(t *testing.T) {
 	idx := testIndex(t)
 	if err := idx.RemoveNote("hospital-bag"); err != nil {

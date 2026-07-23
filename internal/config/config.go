@@ -22,9 +22,10 @@ type Git struct {
 }
 
 type Ollama struct {
-	BaseURL    string `toml:"base_url"`
-	AgentModel string `toml:"agent_model"`
-	EmbedModel string `toml:"embed_model"`
+	BaseURL               string `toml:"base_url"`
+	AgentModel            string `toml:"agent_model"`
+	EmbedModel            string `toml:"embed_model"`
+	EmbedQueryInstruction string `toml:"embed_query_instruction"`
 }
 
 func Default() Config {
@@ -32,9 +33,10 @@ func Default() Config {
 		Bind: "127.0.0.1:7920",
 		Git:  Git{Enabled: true},
 		Ollama: Ollama{
-			BaseURL:    "http://localhost:11434",
-			AgentModel: "qwen3.6:35b",
-			EmbedModel: "qwen3-embedding:8b",
+			BaseURL:               "http://localhost:11434",
+			AgentModel:            "qwen3.6:35b",
+			EmbedModel:            "qwen3-embedding:8b",
+			EmbedQueryInstruction: "Given a web search query, retrieve relevant passages that answer the query",
 		},
 	}
 }
