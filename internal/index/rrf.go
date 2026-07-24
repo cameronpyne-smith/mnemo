@@ -1,10 +1,5 @@
 package index
 
-import (
-	"slices"
-	"strings"
-)
-
 // FuseRRF merges ranked lists of slugs by reciprocal rank fusion:
 // score(d) = sum over lists of 1/(k + rank(d)), with rank starting at 1.
 // A doc absent from a list contributes nothing for that list and is kept.
@@ -24,19 +19,5 @@ func FuseRRF(lists [][]string, k, limit int) []Scored {
 		ranked = append(ranked, Scored{Slug: slug, Score: score})
 	}
 
-	slices.SortFunc(ranked, func(a, b Scored) int {
-		switch {
-		case a.Score > b.Score:
-			return -1
-		case a.Score < b.Score:
-			return 1
-		default:
-			return strings.Compare(a.Slug, b.Slug)
-		}
-	})
-
-	if len(ranked) > limit {
-		return ranked[:limit]
-	}
-	return ranked
+	return orderByScoreDescending(ranked, limit)
 }
