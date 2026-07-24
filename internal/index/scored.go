@@ -11,6 +11,10 @@ type Scored struct {
 }
 
 func orderByScoreDescending(scored []Scored, limit int) []Scored {
+	if limit <= 0 {
+		return nil
+	}
+
 	slices.SortFunc(scored, func(a, b Scored) int {
 		switch {
 		case a.Score > b.Score:

@@ -66,6 +66,13 @@ func TestTopK(t *testing.T) {
 			k:     5,
 			want:  nil,
 		},
+		{
+			name:  "mismatched dimensions skipped, not panicked",
+			query: []float32{0, 1},
+			docs:  append([]DocVector{{Slug: "flatland", Vec: []float32{1}}}, docs...),
+			k:     10,
+			want:  []Scored{{"north", 1}, {"northeast", 0.8}, {"east", 0}, {"south", -1}},
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

@@ -47,6 +47,13 @@ func TestFuseRRF(t *testing.T) {
 			limit: 10,
 			want:  nil,
 		},
+		{
+			name:  "negative limit returns nothing, not a panic",
+			lists: [][]string{{"a", "b"}},
+			k:     60,
+			limit: -1,
+			want:  nil,
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
