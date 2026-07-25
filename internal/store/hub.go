@@ -9,8 +9,9 @@ import (
 )
 
 var (
-	ErrNotFound = errors.New("not found")
-	ErrInvalid  = errors.New("invalid argument")
+	ErrNotFound    = errors.New("not found")
+	ErrInvalid     = errors.New("invalid argument")
+	ErrUnavailable = errors.New("temporarily unavailable")
 )
 
 func (s *Store) Hubs() (*vault.Note, []*vault.Note, error) {

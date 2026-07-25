@@ -9,12 +9,14 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"time"
 
 	"github.com/spf13/cobra"
 
 	"github.com/cameronpyne-smith/mnemo/internal/agent"
 	"github.com/cameronpyne-smith/mnemo/internal/config"
+	"github.com/cameronpyne-smith/mnemo/internal/embedder"
 	"github.com/cameronpyne-smith/mnemo/internal/gitsync"
 	"github.com/cameronpyne-smith/mnemo/internal/mcp"
 	"github.com/cameronpyne-smith/mnemo/internal/ollama"
@@ -23,7 +25,7 @@ import (
 )
 
 func newServeCmd(configPath *string) *cobra.Command {
-	var noFiling bool
+	var noFiling, noEmbeddings bool
 
 	cmd := &cobra.Command{
 		Use:   "serve",
@@ -64,6 +66,16 @@ func newServeCmd(configPath *string) *cobra.Command {
 			} else {
 				close(syncDone)
 				log.Warn("git redundancy disabled — vault history is not being recorded")
+			}
+
+			if !noEmbeddings {
+				cache := embedder.OpenCache(filepath.Join(cfg.Vault, ".mnemo", "embeddings.gob"), cfg.Ollama.EmbedModel)
+				embedClient := embedder.NewOllama(ollama.New(cfg.Ollama.BaseURL), cfg.Ollama.EmbedModel)
+				embedWorker := st.EnableEmbeddings(cache, embedClient, cfg.Ollama.EmbedQueryInstruction, log)
+				go embedWorker.Run(ctx)
+				log.Info("embedding worker running", "model", cfg.Ollama.EmbedModel, "cached", cache.Len())
+			} else {
+				log.Info("embeddings disabled — search is FTS-only")
 			}
 
 			var worker *agent.Worker
@@ -116,6 +128,7 @@ func newServeCmd(configPath *string) *cobra.Command {
 		},
 	}
 	cmd.Flags().BoolVar(&noFiling, "no-filing", false, "serve the API without the filing agent")
+	cmd.Flags().BoolVar(&noEmbeddings, "no-embeddings", false, "serve without semantic search (FTS-only)")
 	return cmd
 }
 

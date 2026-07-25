@@ -112,7 +112,7 @@ func TestEvalFiling(t *testing.T) {
 			}
 
 			for query, keywords := range ec.searches {
-				hits, err := st.Search(query, 5)
+				hits, err := st.Search(t.Context(), query, 5)
 				if err != nil {
 					t.Fatalf("Search(%q): %v", query, err)
 				}

@@ -145,7 +145,7 @@ func TestWriteNoteCannotOverwriteHub(t *testing.T) {
 	if err := st.AddToHub("test", "health", "x", "d"); err == nil {
 		t.Log("hub add failed as expected (note missing), creating hub directly")
 	}
-	out := f.execute("write_note", map[string]any{"slug": "root", "description": "d", "body": "b"})
+	out := f.execute(t.Context(), "write_note", map[string]any{"slug": "root", "description": "d", "body": "b"})
 	if !strings.Contains(out, "error") {
 		t.Errorf("overwriting root hub allowed: %q", out)
 	}

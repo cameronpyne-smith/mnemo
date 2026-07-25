@@ -33,6 +33,7 @@ func New(st *store.Store, worker *agent.Worker, token string, mcp http.Handler, 
 	mux.HandleFunc("GET /search", s.handleSearch)
 	mux.HandleFunc("GET /notes/{slug}", s.handleGet)
 	mux.HandleFunc("GET /notes/{slug}/links", s.handleLinks)
+	mux.HandleFunc("GET /notes/{slug}/similar", s.handleSimilar)
 	mux.HandleFunc("POST /notes/{slug}/edit", s.handleEdit)
 	mux.HandleFunc("POST /notes/{slug}/rename", s.handleRename)
 	mux.HandleFunc("POST /capture", s.handleCapture)
@@ -68,7 +69,7 @@ func (s *Server) handleIndex(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handleSearch(w http.ResponseWriter, r *http.Request) {
 	limit, _ := strconv.Atoi(r.URL.Query().Get("limit"))
-	hits, err := s.store.Search(r.URL.Query().Get("q"), limit)
+	hits, err := s.store.Search(r.Context(), r.URL.Query().Get("q"), limit)
 	if err != nil {
 		writeError(w, statusFor(err), err)
 		return
@@ -94,6 +95,16 @@ func (s *Server) handleLinks(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, api.LinksResponse{
 		Slug: view.Note.Slug, Links: view.Links, Backlinks: view.Backlinks,
 	})
+}
+
+func (s *Server) handleSimilar(w http.ResponseWriter, r *http.Request) {
+	limit, _ := strconv.Atoi(r.URL.Query().Get("limit"))
+	hits, err := s.store.Similar(r.PathValue("slug"), limit)
+	if err != nil {
+		writeError(w, statusFor(err), err)
+		return
+	}
+	writeJSON(w, http.StatusOK, api.FromHits(hits))
 }
 
 func (s *Server) handleEdit(w http.ResponseWriter, r *http.Request) {
@@ -161,6 +172,10 @@ func (s *Server) handleStatus(w http.ResponseWriter, r *http.Request) {
 	}
 	resp := api.StatusResponse{
 		Notes: st.Notes, Hubs: st.Hubs, Inbox: st.Inbox, Archived: st.Archived,
+		Embeddings: api.EmbeddingsStatus{
+			Enabled: st.Embed.Enabled, Embedded: st.Embed.Embedded,
+			Backlog: st.Embed.Backlog, LastError: st.Embed.LastError,
+		},
 	}
 	if s.worker != nil {
 		processed, failed, inflight := s.worker.Stats()
@@ -195,6 +210,9 @@ func statusFor(err error) int {
 	}
 	if errors.Is(err, store.ErrInvalid) {
 		return http.StatusBadRequest
+	}
+	if errors.Is(err, store.ErrUnavailable) {
+		return http.StatusServiceUnavailable
 	}
 	return http.StatusInternalServerError
 }

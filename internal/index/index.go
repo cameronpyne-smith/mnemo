@@ -20,12 +20,13 @@ type Hit struct {
 }
 
 type Index struct {
-	mu       sync.RWMutex
-	fts      bleve.Index
-	folders  map[string]string
-	outbound map[string][]string
-	inbound  map[string]map[string]bool
-	vectors  map[string][]float32
+	mu           sync.RWMutex
+	fts          bleve.Index
+	folders      map[string]string
+	descriptions map[string]string
+	outbound     map[string][]string
+	inbound      map[string]map[string]bool
+	vectors      map[string][][]float32
 }
 
 func New() (*Index, error) {
@@ -34,11 +35,12 @@ func New() (*Index, error) {
 		return nil, fmt.Errorf("creating search index: %w", err)
 	}
 	return &Index{
-		fts:      fts,
-		folders:  make(map[string]string),
-		outbound: make(map[string][]string),
-		inbound:  make(map[string]map[string]bool),
-		vectors:  make(map[string][]float32),
+		fts:          fts,
+		folders:      make(map[string]string),
+		descriptions: make(map[string]string),
+		outbound:     make(map[string][]string),
+		inbound:      make(map[string]map[string]bool),
+		vectors:      make(map[string][][]float32),
 	}, nil
 }
 
@@ -76,6 +78,7 @@ func (idx *Index) IndexNote(n *vault.Note) error {
 	}
 
 	idx.folders[n.Slug] = n.Folder
+	idx.descriptions[n.Slug] = n.Frontmatter.Description
 	idx.removeEdgesLocked(n.Slug)
 	links := n.Links()
 	idx.outbound[n.Slug] = links
@@ -96,31 +99,46 @@ func (idx *Index) RemoveNote(slug string) error {
 		return fmt.Errorf("removing note %s from index: %w", slug, err)
 	}
 	delete(idx.folders, slug)
+	delete(idx.descriptions, slug)
 	delete(idx.vectors, slug)
 	idx.removeEdgesLocked(slug)
 	return nil
 }
 
-func (idx *Index) SetVector(slug string, vec []float32) {
+// SetVectors replaces a note's chunk vectors wholesale. Callers must never
+// mutate vecs afterwards — readers hold references without the lock.
+func (idx *Index) SetVectors(slug string, vecs [][]float32) {
 	idx.mu.Lock()
 	defer idx.mu.Unlock()
-	idx.vectors[slug] = vec
+	idx.vectors[slug] = vecs
 }
 
-func (idx *Index) RemoveVector(slug string) {
+func (idx *Index) RemoveVectors(slug string) {
 	idx.mu.Lock()
 	defer idx.mu.Unlock()
 	delete(idx.vectors, slug)
 }
 
+// Vectors flattens to one DocVector per chunk, sorted by slug with a note's
+// chunks in order — a multi-chunk note repeats its slug. Consumers ranking
+// notes must reduce by slug, keeping the best chunk.
 func (idx *Index) Vectors() []DocVector {
 	idx.mu.RLock()
 	defer idx.mu.RUnlock()
 	out := make([]DocVector, 0, len(idx.vectors))
 	for _, slug := range slices.Sorted(maps.Keys(idx.vectors)) {
-		out = append(out, DocVector{Slug: slug, Vec: idx.vectors[slug]})
+		for _, vec := range idx.vectors[slug] {
+			out = append(out, DocVector{Slug: slug, Vec: vec})
+		}
 	}
 	return out
+}
+
+// VectorCount reports how many notes have embeddings, regardless of chunks.
+func (idx *Index) VectorCount() int {
+	idx.mu.RLock()
+	defer idx.mu.RUnlock()
+	return len(idx.vectors)
 }
 
 func (idx *Index) removeEdgesLocked(slug string) {

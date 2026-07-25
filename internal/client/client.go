@@ -41,6 +41,15 @@ func (c *Client) Get(slug string) (*api.Note, error) {
 	return &resp, c.do(http.MethodGet, "/notes/"+url.PathEscape(slug), nil, &resp)
 }
 
+func (c *Client) Similar(slug string, limit int) (*api.SearchResponse, error) {
+	var resp api.SearchResponse
+	path := "/notes/" + url.PathEscape(slug) + "/similar"
+	if limit > 0 {
+		path += "?limit=" + strconv.Itoa(limit)
+	}
+	return &resp, c.do(http.MethodGet, path, nil, &resp)
+}
+
 func (c *Client) Capture(content, source string) (*api.CaptureResponse, error) {
 	var resp api.CaptureResponse
 	return &resp, c.do(http.MethodPost, "/capture", api.CaptureRequest{Content: content, Source: source}, &resp)

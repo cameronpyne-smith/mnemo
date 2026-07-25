@@ -1,12 +1,15 @@
 package store
 
 import (
+	"context"
 	"fmt"
+	"log/slog"
 	"sort"
 	"strings"
 	"sync"
 	"time"
 
+	"github.com/cameronpyne-smith/mnemo/internal/embedder"
 	"github.com/cameronpyne-smith/mnemo/internal/index"
 	"github.com/cameronpyne-smith/mnemo/internal/vault"
 )
@@ -17,6 +20,9 @@ type Store struct {
 	idx       *index.Index
 	now       func() time.Time
 	committer Committer
+	embed     *embedder.Worker
+	query     *embedder.QueryEmbedder
+	log       *slog.Logger
 }
 
 // Committer records a completed mutation in the redundancy layer. Called
@@ -33,6 +39,24 @@ const (
 )
 
 func (s *Store) SetCommitter(c Committer) { s.committer = c }
+
+// EnableEmbeddings wires semantic search: a background worker keeps the
+// index's vectors reconciled with the vault (run its Run in a goroutine),
+// mutations wake it, and searches embed their query through the same client.
+// Call before serving; a nil log means silent. Without this call, search is
+// FTS-only and Similar reports ErrUnavailable.
+func (s *Store) EnableEmbeddings(cache *embedder.Cache, client embedder.EmbedClient, queryInstruction string, log *slog.Logger) *embedder.Worker {
+	s.embed = embedder.NewWorker(s.vault, s.idx, cache, client, log)
+	s.query = embedder.NewQueryEmbedder(client, queryInstruction)
+	s.log = log
+	return s.embed
+}
+
+func (s *Store) wakeEmbed() {
+	if s.embed != nil {
+		s.embed.Wake()
+	}
+}
 
 func (s *Store) record(actor, action string, paths ...string) {
 	if s.committer != nil {
@@ -53,6 +77,14 @@ type Status struct {
 	Hubs     int
 	Inbox    int
 	Archived int
+	Embed    EmbedStatus
+}
+
+type EmbedStatus struct {
+	Enabled   bool
+	Embedded  int
+	Backlog   int
+	LastError string
 }
 
 func Open(path string) (*Store, error) {
@@ -67,12 +99,48 @@ func Open(path string) (*Store, error) {
 	return &Store{vault: v, idx: idx, now: time.Now}, nil
 }
 
-func (s *Store) Search(q string, limit int) ([]index.Hit, error) {
+// queryEmbedTimeout bounds how long a search waits on the model before
+// degrading to FTS-only. Warm embedding is milliseconds; this only bites when
+// ollama is loading or down, where a stalled search is worse than a text one.
+const queryEmbedTimeout = 5 * time.Second
+
+// Search is hybrid when embeddings are enabled and any vectors exist: the
+// query is embedded (instruction-wrapped) and FTS and vector rankings are
+// fused. Any failure on the vector side degrades to FTS-only rather than
+// failing the search.
+func (s *Store) Search(ctx context.Context, q string, limit int) ([]index.Hit, error) {
 	q = strings.TrimSpace(q)
 	if q == "" {
 		return nil, fmt.Errorf("search: empty query: %w", ErrInvalid)
 	}
-	return s.idx.Search(q, limit)
+	if s.query == nil || s.idx.VectorCount() == 0 {
+		return s.idx.Search(q, limit)
+	}
+	embedCtx, cancel := context.WithTimeout(ctx, queryEmbedTimeout)
+	defer cancel()
+	queryVec, err := s.query.EmbedQuery(embedCtx, q)
+	if err != nil {
+		if s.log != nil {
+			s.log.Warn("query embedding failed; searching text-only", "error", err)
+		}
+		return s.idx.Search(q, limit)
+	}
+	return s.idx.SearchHybrid(q, queryVec, limit)
+}
+
+// Similar lists the notes semantically nearest to slug by embedding cosine.
+func (s *Store) Similar(slug string, limit int) ([]index.Hit, error) {
+	if _, ok := s.vault.Locate(slug); !ok {
+		return nil, fmt.Errorf("similar %s: %w", slug, ErrNotFound)
+	}
+	if s.embed == nil {
+		return nil, fmt.Errorf("similar %s: embeddings disabled: %w", slug, ErrUnavailable)
+	}
+	hits, ok := s.idx.Similar(slug, limit)
+	if !ok {
+		return nil, fmt.Errorf("similar %s: not embedded yet: %w", slug, ErrUnavailable)
+	}
+	return hits, nil
 }
 
 func (s *Store) Get(slug string) (*NoteView, error) {
@@ -107,7 +175,10 @@ func (s *Store) saveLocked(n *vault.Note) error {
 		return err
 	}
 	if n.Folder == vault.FolderNotes || n.Folder == vault.FolderHubs {
-		return s.idx.IndexNote(n)
+		if err := s.idx.IndexNote(n); err != nil {
+			return err
+		}
+		s.wakeEmbed()
 	}
 	return nil
 }
@@ -217,6 +288,7 @@ func (s *Store) Rename(actor, oldSlug, newSlug string) error {
 		if err := s.idx.RemoveNote(oldSlug); err != nil {
 			return err
 		}
+		s.wakeEmbed()
 	}
 	s.record(actor, fmt.Sprintf("rename %s -> %s (%d links rewritten)", oldSlug, newSlug, rewritten), paths...)
 	return nil
@@ -236,6 +308,14 @@ func (s *Store) Status() (Status, error) {
 			return st, err
 		}
 		*target = len(notes)
+	}
+	if s.embed != nil {
+		st.Embed = EmbedStatus{
+			Enabled:   true,
+			Embedded:  s.idx.VectorCount(),
+			Backlog:   s.embed.Backlog(),
+			LastError: s.embed.LastError(),
+		}
 	}
 	return st, nil
 }

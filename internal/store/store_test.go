@@ -43,7 +43,7 @@ func TestSaveSetsDatesAndIndexes(t *testing.T) {
 	if view.Note.Frontmatter.Created == "" || view.Note.Frontmatter.Updated == "" {
 		t.Errorf("dates not set: %+v", view.Note.Frontmatter)
 	}
-	hits, err := s.Search("birth", 10)
+	hits, err := s.Search(t.Context(), "birth", 10)
 	if err != nil || len(hits) == 0 {
 		t.Fatalf("Search after Save: hits=%v err=%v", hits, err)
 	}
@@ -52,7 +52,7 @@ func TestSaveSetsDatesAndIndexes(t *testing.T) {
 func TestSearchRejectsBlankQuery(t *testing.T) {
 	s := testStore(t)
 	for _, q := range []string{"", "   "} {
-		if _, err := s.Search(q, 10); !errors.Is(err, ErrInvalid) {
+		if _, err := s.Search(t.Context(), q, 10); !errors.Is(err, ErrInvalid) {
 			t.Errorf("Search(%q): err = %v, want ErrInvalid", q, err)
 		}
 	}
@@ -211,7 +211,7 @@ func TestEditNote(t *testing.T) {
 		t.Errorf("body = %q", view.Note.Body)
 	}
 
-	hits, err := s.Search("new description", 10)
+	hits, err := s.Search(t.Context(), "new description", 10)
 	if err != nil || len(hits) == 0 || hits[0].Slug != "n" {
 		t.Errorf("edit not reindexed: hits=%v err=%v", hits, err)
 	}

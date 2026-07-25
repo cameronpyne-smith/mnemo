@@ -76,13 +76,21 @@ type GitStatus struct {
 	Remotes   []GitRemoteStatus `json:"remotes,omitempty"`
 }
 
+type EmbeddingsStatus struct {
+	Enabled   bool   `json:"enabled"`
+	Embedded  int    `json:"embedded"`
+	Backlog   int    `json:"backlog"`
+	LastError string `json:"last_error,omitempty"`
+}
+
 type StatusResponse struct {
-	Notes    int          `json:"notes"`
-	Hubs     int          `json:"hubs"`
-	Inbox    int          `json:"inbox"`
-	Archived int          `json:"archived"`
-	Filing   FilingStatus `json:"filing"`
-	Git      GitStatus    `json:"git"`
+	Notes      int              `json:"notes"`
+	Hubs       int              `json:"hubs"`
+	Inbox      int              `json:"inbox"`
+	Archived   int              `json:"archived"`
+	Filing     FilingStatus     `json:"filing"`
+	Git        GitStatus        `json:"git"`
+	Embeddings EmbeddingsStatus `json:"embeddings"`
 }
 
 type ErrorResponse struct {

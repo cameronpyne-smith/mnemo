@@ -28,6 +28,10 @@ func NewServer(st *store.Store, worker *agent.Worker) *sdk.Server {
 		Description: "Full-text search across all notes and hubs. Returns slugs with descriptions and relevance scores; follow up with vault_get for full content.",
 	}, t.search)
 	sdk.AddTool(srv, &sdk.Tool{
+		Name:        "vault_similar",
+		Description: "List the notes semantically nearest to a note by embedding similarity — related content that explicit wikilinks may not capture.",
+	}, t.similar)
+	sdk.AddTool(srv, &sdk.Tool{
 		Name:        "vault_get",
 		Description: "Read one note in full by slug, including its outbound wikilinks and backlinks.",
 	}, t.get)

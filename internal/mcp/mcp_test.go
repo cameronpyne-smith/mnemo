@@ -100,7 +100,7 @@ func TestToolsRegistered(t *testing.T) {
 	for _, tool := range res.Tools {
 		names = append(names, tool.Name)
 	}
-	want := []string{"vault_capture", "vault_edit", "vault_get", "vault_index", "vault_links", "vault_search"}
+	want := []string{"vault_capture", "vault_edit", "vault_get", "vault_index", "vault_links", "vault_search", "vault_similar"}
 	slices.Sort(names)
 	if !slices.Equal(names, want) {
 		t.Errorf("tools = %v, want %v", names, want)

@@ -34,6 +34,7 @@ func newRootCmd() *cobra.Command {
 		newServeCmd(&configPath),
 		newAddCmd(&configPath),
 		newSearchCmd(&configPath),
+		newSimilarCmd(&configPath),
 		newGetCmd(&configPath),
 		newStatusCmd(&configPath),
 		newRenameCmd(&configPath),

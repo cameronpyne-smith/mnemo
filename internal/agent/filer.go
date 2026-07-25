@@ -99,7 +99,7 @@ func (f *Filer) File(ctx context.Context, captureSlug string) (*Result, error) {
 				}
 				return result, nil
 			}
-			output := f.execute(call.Function.Name, call.Function.Arguments)
+			output := f.execute(ctx, call.Function.Name, call.Function.Arguments)
 			if f.Log != nil {
 				f.Log.Debug("tool call", "capture", captureSlug, "tool", call.Function.Name, "args", call.Function.Arguments)
 			}
@@ -128,22 +128,22 @@ func parseFinish(args map[string]any) *Result {
 	return r
 }
 
-func (f *Filer) execute(name string, args map[string]any) string {
-	out, err := f.executeErr(name, args)
+func (f *Filer) execute(ctx context.Context, name string, args map[string]any) string {
+	out, err := f.executeErr(ctx, name, args)
 	if err != nil {
 		return "error: " + err.Error()
 	}
 	return out
 }
 
-func (f *Filer) executeErr(name string, args map[string]any) (string, error) {
+func (f *Filer) executeErr(ctx context.Context, name string, args map[string]any) (string, error) {
 	switch name {
 	case "search_notes":
 		q, _ := args["query"].(string)
 		if strings.TrimSpace(q) == "" {
 			return "", fmt.Errorf("query is required")
 		}
-		hits, err := f.Store.Search(q, 8)
+		hits, err := f.Store.Search(ctx, q, 8)
 		if err != nil {
 			return "", err
 		}

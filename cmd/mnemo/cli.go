@@ -118,6 +118,36 @@ func newSearchCmd(configPath *string) *cobra.Command {
 	return cmd
 }
 
+func newSimilarCmd(configPath *string) *cobra.Command {
+	var limit int
+
+	cmd := &cobra.Command{
+		Use:   "similar <slug>",
+		Short: "List notes semantically nearest to a note",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			c, _, err := newClient(*configPath)
+			if err != nil {
+				return err
+			}
+			resp, err := c.Similar(args[0], limit)
+			if err != nil {
+				return err
+			}
+			if len(resp.Results) == 0 {
+				fmt.Fprintln(cmd.OutOrStdout(), "no matches")
+				return nil
+			}
+			for _, r := range resp.Results {
+				fmt.Fprintf(cmd.OutOrStdout(), "%-30s %s\n", r.Slug, r.Description)
+			}
+			return nil
+		},
+	}
+	cmd.Flags().IntVarP(&limit, "limit", "n", 10, "maximum results")
+	return cmd
+}
+
 func newGetCmd(configPath *string) *cobra.Command {
 	return &cobra.Command{
 		Use:   "get <slug>",
@@ -166,6 +196,18 @@ func newStatusCmd(configPath *string) *cobra.Command {
 					st.Filing.Processed, st.Filing.Failed, st.Filing.InFlight)
 			} else {
 				fmt.Fprintln(out, "filing: disabled")
+			}
+			if st.Embeddings.Enabled {
+				fmt.Fprintf(out, "embeddings: %d notes embedded", st.Embeddings.Embedded)
+				if st.Embeddings.Backlog > 0 {
+					fmt.Fprintf(out, ", %d in backlog", st.Embeddings.Backlog)
+				}
+				if st.Embeddings.LastError != "" {
+					fmt.Fprintf(out, " (last error: %s)", st.Embeddings.LastError)
+				}
+				fmt.Fprintln(out)
+			} else {
+				fmt.Fprintln(out, "embeddings: disabled")
 			}
 			if st.Git.Enabled {
 				fmt.Fprintf(out, "git: %d commits this session", st.Git.Commits)

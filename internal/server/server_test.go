@@ -122,6 +122,23 @@ func TestEditRenameStatusFlow(t *testing.T) {
 	}
 }
 
+func TestSimilarEndpoint(t *testing.T) {
+	srv, st := testServer(t, "")
+	if err := st.Save("test", &vault.Note{
+		Slug: "birth-plan", Folder: vault.FolderNotes,
+		Frontmatter: vault.Frontmatter{Description: "The plan."}, Body: "p\n",
+	}); err != nil {
+		t.Fatalf("Save: %v", err)
+	}
+
+	if code := request(t, http.MethodGet, srv.URL+"/notes/birth-plan/similar", "", nil, nil); code != http.StatusServiceUnavailable {
+		t.Errorf("similar with embeddings disabled: code=%d, want 503", code)
+	}
+	if code := request(t, http.MethodGet, srv.URL+"/notes/nope/similar", "", nil, nil); code != http.StatusNotFound {
+		t.Errorf("similar for missing note: code=%d, want 404", code)
+	}
+}
+
 func TestIndexEndpoint(t *testing.T) {
 	srv, st := testServer(t, "")
 	if err := st.Save("test", &vault.Note{

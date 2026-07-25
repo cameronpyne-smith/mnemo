@@ -92,8 +92,9 @@ HTTP API (also the MCP tool surface):
 | Endpoint | MCP tool | Purpose |
 |---|---|---|
 | `GET  /index` | `vault_index` | Root hub + hub listing — the cheap entry point |
-| `GET  /search?q=` | `vault_search` | Hybrid FTS(+semantic from P4) → slugs + descriptions |
+| `GET  /search?q=` | `vault_search` | Hybrid FTS + semantic → slugs + descriptions |
 | `GET  /notes/{slug}` | `vault_get` | Full note content |
+| `GET  /notes/{slug}/similar` | `vault_similar` | Semantically nearest notes (503 while unembedded/disabled) |
 | `POST /capture` | `vault_capture` | Dump raw content into inbox (returns capture id) |
 | `POST /notes/{slug}/edit` | `vault_edit` | Targeted correction/append to an existing note |
 | `GET  /notes/{slug}/links` | `vault_links` | Outbound links + backlinks |
@@ -136,10 +137,10 @@ Each phase ends runnable and used-in-anger before the next starts.
 - [ ] Restore drill documented and performed: single-note rollback via git, full-vault clone from each remote; periodic `git fsck` on remotes
 - [ ] Decide offsite story for the house-loss scenario (work-machine remote / encrypted bundle drop / accept risk)
 
-### Phase 3 — Embeddings + semantic search
-- [ ] Embedding pipeline: chunk = note (split oversized), content-hash cache on disk, re-embed only changed notes
-- [ ] Brute-force cosine top-k; hybrid ranking (FTS + vector) in `/search`
-- [ ] `mnemo similar <slug>` — nearest notes (also the dreamer-linker primitive)
+### Phase 3 — Embeddings + semantic search ✅ (2026-07-25)
+- [x] Embedding pipeline: chunk = note (split oversized), content-hash cache on disk, re-embed only changed notes
+- [x] Brute-force cosine top-k; hybrid ranking (FTS + vector) in `/search`
+- [x] `mnemo similar <slug>` — nearest notes (also the dreamer-linker primitive); also `vault_similar` MCP tool and `GET /notes/{slug}/similar`
 
 ### Phase 4 — Dreamer
 - [ ] Scheduler: idle-time passes, per-pass budgets, `mnemo dream` to trigger manually, report of actions taken

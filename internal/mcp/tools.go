@@ -18,6 +18,11 @@ type SlugArgs struct {
 	Slug string `json:"slug" jsonschema:"the note's slug"`
 }
 
+type SimilarArgs struct {
+	Slug  string `json:"slug" jsonschema:"the note's slug"`
+	Limit int    `json:"limit,omitempty" jsonschema:"maximum number of results (default 10)"`
+}
+
 type CaptureArgs struct {
 	Content string `json:"content" jsonschema:"raw content to capture"`
 	Source  string `json:"source,omitempty" jsonschema:"where the content came from, e.g. claude-code@work"`
@@ -44,7 +49,15 @@ func (t *toolServer) index(ctx context.Context, req *sdk.CallToolRequest, _ any)
 }
 
 func (t *toolServer) search(ctx context.Context, req *sdk.CallToolRequest, args SearchArgs) (*sdk.CallToolResult, api.SearchResponse, error) {
-	hits, err := t.store.Search(args.Query, args.Limit)
+	hits, err := t.store.Search(ctx, args.Query, args.Limit)
+	if err != nil {
+		return nil, api.SearchResponse{}, err
+	}
+	return nil, api.FromHits(hits), nil
+}
+
+func (t *toolServer) similar(ctx context.Context, req *sdk.CallToolRequest, args SimilarArgs) (*sdk.CallToolResult, api.SearchResponse, error) {
+	hits, err := t.store.Similar(args.Slug, args.Limit)
 	if err != nil {
 		return nil, api.SearchResponse{}, err
 	}
