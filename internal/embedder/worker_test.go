@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -273,6 +274,50 @@ func TestSyncEmbedFailureFallsBackAndRecovers(t *testing.T) {
 	}
 	if got := vectorSlugs(fx.idx); !reflect.DeepEqual(got, []string{"one", "two"}) {
 		t.Errorf("vector slugs after recovery = %v", got)
+	}
+}
+
+func TestSyncSplitsOversizedNote(t *testing.T) {
+	fx := newWorkerFixture(t)
+	var body strings.Builder
+	for _, h := range []string{"# One", "# Two", "# Three"} {
+		body.WriteString(h + "\n" + strings.Repeat("alpha beta gamma ", 1200) + "\n")
+	}
+	writeNote(t, fx.vault, vault.FolderNotes, "big", "A very long note.", body.String())
+
+	if err := fx.worker.Sync(context.Background()); err != nil {
+		t.Fatalf("Sync: %v", err)
+	}
+
+	chunks := Chunks(noteText(t, fx.vault, vault.FolderNotes, "big"))
+	if len(chunks) < 2 {
+		t.Fatalf("fixture note produced %d chunks, want several", len(chunks))
+	}
+	if got := fx.fake.inputs(); !reflect.DeepEqual(got, chunks) {
+		t.Errorf("embedded %d inputs, want the note's %d chunks", len(got), len(chunks))
+	}
+	vecs := fx.idx.Vectors()
+	if len(vecs) != len(chunks) {
+		t.Fatalf("index holds %d vectors, want one per chunk", len(vecs))
+	}
+	for i, dv := range vecs {
+		if dv.Slug != "big" {
+			t.Errorf("vector %d slug = %s, want big", i, dv.Slug)
+		}
+		if !reflect.DeepEqual(dv.Vec, fakeVec(chunks[i])) {
+			t.Errorf("vector %d does not match its chunk", i)
+		}
+	}
+	if got := fx.worker.Backlog(); got != 0 {
+		t.Errorf("Backlog = %d, want 0", got)
+	}
+
+	fx.fake.reset()
+	if err := fx.worker.Sync(context.Background()); err != nil {
+		t.Fatalf("second Sync: %v", err)
+	}
+	if got := fx.fake.inputs(); len(got) != 0 {
+		t.Errorf("second sync embedded %v, want full cache hit", got)
 	}
 }
 
