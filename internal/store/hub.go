@@ -32,6 +32,40 @@ func (s *Store) Hubs() (*vault.Note, []*vault.Note, error) {
 	return root, hubs, nil
 }
 
+func (s *Store) CreateHub(actor, slug, description string) (*vault.Note, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if !vault.ValidSlug(slug) {
+		return nil, fmt.Errorf("create hub: invalid slug %q: %w", slug, ErrInvalid)
+	}
+	description = strings.TrimSpace(description)
+	if description == "" {
+		return nil, fmt.Errorf("create hub %s: empty description: %w", slug, ErrInvalid)
+	}
+	if folder, exists := s.vault.Locate(slug); exists {
+		return nil, fmt.Errorf("create hub: %s already exists in %s/: %w", slug, folder, ErrInvalid)
+	}
+
+	hub := &vault.Note{
+		Slug:   slug,
+		Folder: vault.FolderHubs,
+		Frontmatter: vault.Frontmatter{
+			Description: description,
+			Type:        vault.TypeHub,
+		},
+		Body: fmt.Sprintf("# %s\n", strings.ReplaceAll(slug, "-", " ")),
+	}
+	if err := s.saveLocked(hub); err != nil {
+		return nil, err
+	}
+	if err := s.registerHubInRootLocked(hub); err != nil {
+		return nil, err
+	}
+	s.record(actor, "create hub "+slug, notePath(vault.FolderHubs, slug), notePath(vault.FolderHubs, "root"))
+	return hub, nil
+}
+
 func (s *Store) AddToHub(actor, hubSlug, noteSlug, description string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()

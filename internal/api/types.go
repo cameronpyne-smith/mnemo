@@ -49,6 +49,18 @@ type RenameRequest struct {
 	To string `json:"to"`
 }
 
+type CreateHubRequest struct {
+	Slug        string `json:"slug"`
+	Description string `json:"description"`
+}
+
+type DeleteResponse struct {
+	Slug            string   `json:"slug"`
+	Folder          string   `json:"folder"`
+	RemovedFromHubs []string `json:"removed_from_hubs,omitempty"`
+	DanglingLinks   []string `json:"dangling_links,omitempty"`
+}
+
 type LinksResponse struct {
 	Slug      string   `json:"slug"`
 	Links     []string `json:"links"`

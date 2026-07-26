@@ -60,6 +60,16 @@ func (c *Client) Rename(slug, to string) (*api.Note, error) {
 	return &resp, c.do(http.MethodPost, "/notes/"+url.PathEscape(slug)+"/rename", api.RenameRequest{To: to}, &resp)
 }
 
+func (c *Client) CreateHub(slug, description string) (*api.Note, error) {
+	var resp api.Note
+	return &resp, c.do(http.MethodPost, "/hubs", api.CreateHubRequest{Slug: slug, Description: description}, &resp)
+}
+
+func (c *Client) Delete(slug string) (*api.DeleteResponse, error) {
+	var resp api.DeleteResponse
+	return &resp, c.do(http.MethodDelete, "/notes/"+url.PathEscape(slug), nil, &resp)
+}
+
 func (c *Client) Status() (*api.StatusResponse, error) {
 	var resp api.StatusResponse
 	return &resp, c.do(http.MethodGet, "/status", nil, &resp)

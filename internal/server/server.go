@@ -36,6 +36,8 @@ func New(st *store.Store, worker *agent.Worker, token string, mcp http.Handler, 
 	mux.HandleFunc("GET /notes/{slug}/similar", s.handleSimilar)
 	mux.HandleFunc("POST /notes/{slug}/edit", s.handleEdit)
 	mux.HandleFunc("POST /notes/{slug}/rename", s.handleRename)
+	mux.HandleFunc("DELETE /notes/{slug}", s.handleDelete)
+	mux.HandleFunc("POST /hubs", s.handleCreateHub)
 	mux.HandleFunc("POST /capture", s.handleCapture)
 	mux.HandleFunc("GET /status", s.handleStatus)
 	return s.auth(mux)
@@ -145,6 +147,33 @@ func (s *Server) handleRename(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, toAPINote(view.Note, view))
+}
+
+func (s *Server) handleCreateHub(w http.ResponseWriter, r *http.Request) {
+	var req api.CreateHubRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, err)
+		return
+	}
+	hub, err := s.store.CreateHub(store.ActorAPI, req.Slug, req.Description)
+	if err != nil {
+		writeError(w, statusFor(err), err)
+		return
+	}
+	writeJSON(w, http.StatusCreated, toAPINote(hub, nil))
+}
+
+func (s *Server) handleDelete(w http.ResponseWriter, r *http.Request) {
+	slug := r.PathValue("slug")
+	res, err := s.store.DeleteNote(store.ActorAPI, slug)
+	if err != nil {
+		writeError(w, statusFor(err), err)
+		return
+	}
+	writeJSON(w, http.StatusOK, api.DeleteResponse{
+		Slug: slug, Folder: res.Folder,
+		RemovedFromHubs: res.RemovedFromHubs, DanglingLinks: res.DanglingLinks,
+	})
 }
 
 func (s *Server) handleCapture(w http.ResponseWriter, r *http.Request) {

@@ -38,6 +38,8 @@ func newRootCmd() *cobra.Command {
 		newGetCmd(&configPath),
 		newStatusCmd(&configPath),
 		newRenameCmd(&configPath),
+		newHubCmd(&configPath),
+		newDeleteCmd(&configPath),
 		newBackupCmd(&configPath),
 	)
 	return root

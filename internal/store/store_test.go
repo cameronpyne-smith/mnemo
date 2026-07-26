@@ -49,6 +49,135 @@ func TestSaveSetsDatesAndIndexes(t *testing.T) {
 	}
 }
 
+func TestCreateHub(t *testing.T) {
+	s := testStore(t)
+	hub, err := s.CreateHub("test", "recipes", "Cooking recipes and meal ideas.")
+	if err != nil {
+		t.Fatalf("CreateHub: %v", err)
+	}
+	if hub.Type() != vault.TypeHub {
+		t.Errorf("type = %s, want hub", hub.Type())
+	}
+
+	root, hubs, err := s.Hubs()
+	if err != nil {
+		t.Fatalf("Hubs: %v", err)
+	}
+	if len(hubs) != 1 || hubs[0].Slug != "recipes" {
+		t.Errorf("hubs = %v, want [recipes]", hubs)
+	}
+	if !strings.Contains(root.Body, "- [[recipes]] — Cooking recipes and meal ideas.") {
+		t.Errorf("root not registered with matching description:\n%s", root.Body)
+	}
+	if strings.Contains(root.Body, "No hubs yet.") {
+		t.Errorf("placeholder not removed:\n%s", root.Body)
+	}
+
+	for name, args := range map[string][2]string{
+		"duplicate":         {"recipes", "Again."},
+		"invalid slug":      {"Bad Slug", "d"},
+		"empty description": {"empty-desc", "  "},
+	} {
+		if _, err := s.CreateHub("test", args[0], args[1]); !errors.Is(err, ErrInvalid) {
+			t.Errorf("%s: err = %v, want ErrInvalid", name, err)
+		}
+	}
+}
+
+func TestDeleteNote(t *testing.T) {
+	s := testStore(t)
+	mustSave(t, s, &vault.Note{
+		Slug: "old-recipe", Folder: vault.FolderNotes,
+		Frontmatter: vault.Frontmatter{Description: "A recipe."}, Body: "Steps.\n",
+	})
+	mustSave(t, s, &vault.Note{
+		Slug: "cooking-notes", Folder: vault.FolderNotes,
+		Frontmatter: vault.Frontmatter{Description: "Notes."},
+		Body:        "See [[old-recipe]] for details.\n",
+	})
+	if err := s.AddToHub("test", "recipes", "old-recipe", "a recipe"); err != nil {
+		t.Fatalf("AddToHub: %v", err)
+	}
+
+	res, err := s.DeleteNote("test", "old-recipe")
+	if err != nil {
+		t.Fatalf("DeleteNote: %v", err)
+	}
+	if res.Folder != vault.FolderNotes {
+		t.Errorf("folder = %s, want notes", res.Folder)
+	}
+	if len(res.RemovedFromHubs) != 1 || res.RemovedFromHubs[0] != "recipes" {
+		t.Errorf("RemovedFromHubs = %v, want [recipes]", res.RemovedFromHubs)
+	}
+	if len(res.DanglingLinks) != 1 || res.DanglingLinks[0] != "cooking-notes" {
+		t.Errorf("DanglingLinks = %v, want [cooking-notes]", res.DanglingLinks)
+	}
+
+	if _, err := s.Get("old-recipe"); !errors.Is(err, ErrNotFound) {
+		t.Errorf("Get after delete: err = %v, want ErrNotFound", err)
+	}
+	hub, err := s.Get("recipes")
+	if err != nil {
+		t.Fatalf("Get hub: %v", err)
+	}
+	if strings.Contains(hub.Note.Body, "old-recipe") {
+		t.Errorf("hub entry not stripped:\n%s", hub.Note.Body)
+	}
+	hits, err := s.Search(t.Context(), "recipe", 10)
+	if err != nil {
+		t.Fatalf("Search: %v", err)
+	}
+	for _, h := range hits {
+		if h.Slug == "old-recipe" {
+			t.Errorf("deleted note still indexed: %v", hits)
+		}
+	}
+}
+
+func TestDeleteHubUnregistersFromRoot(t *testing.T) {
+	s := testStore(t)
+	if _, err := s.CreateHub("test", "recipes", "Cooking."); err != nil {
+		t.Fatalf("CreateHub: %v", err)
+	}
+
+	res, err := s.DeleteNote("test", "recipes")
+	if err != nil {
+		t.Fatalf("DeleteNote: %v", err)
+	}
+	if len(res.RemovedFromHubs) != 1 || res.RemovedFromHubs[0] != "root" {
+		t.Errorf("RemovedFromHubs = %v, want [root]", res.RemovedFromHubs)
+	}
+	root, hubs, err := s.Hubs()
+	if err != nil {
+		t.Fatalf("Hubs: %v", err)
+	}
+	if len(hubs) != 0 || strings.Contains(root.Body, "recipes") {
+		t.Errorf("hub not fully removed: hubs=%v root:\n%s", hubs, root.Body)
+	}
+}
+
+func TestDeleteRejectsRootAndMissing(t *testing.T) {
+	s := testStore(t)
+	if _, err := s.DeleteNote("test", "root"); !errors.Is(err, ErrInvalid) {
+		t.Errorf("delete root: err = %v, want ErrInvalid", err)
+	}
+	if _, err := s.DeleteNote("test", "nope"); !errors.Is(err, ErrNotFound) {
+		t.Errorf("delete missing: err = %v, want ErrNotFound", err)
+	}
+}
+
+func TestStripEntryLines(t *testing.T) {
+	body := "# hub\n\n- [[target]] — the entry\n* [[target|alias]] bullet\n- [[target-not]] — keep\n- [[other]] — mentions [[target]] in prose\nSee [[target]].\n"
+	got, removed := stripEntryLines(body, "target")
+	if removed != 2 {
+		t.Errorf("removed = %d, want 2", removed)
+	}
+	want := "# hub\n\n- [[target-not]] — keep\n- [[other]] — mentions [[target]] in prose\nSee [[target]].\n"
+	if got != want {
+		t.Errorf("stripEntryLines:\ngot  %q\nwant %q", got, want)
+	}
+}
+
 func TestSearchRejectsBlankQuery(t *testing.T) {
 	s := testStore(t)
 	for _, q := range []string{"", "   "} {

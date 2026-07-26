@@ -161,6 +161,44 @@ func TestIndexEndpoint(t *testing.T) {
 	}
 }
 
+func TestHubCreateAndDeleteFlow(t *testing.T) {
+	srv, st := testServer(t, "")
+
+	var hub api.Note
+	code := request(t, http.MethodPost, srv.URL+"/hubs", "", api.CreateHubRequest{Slug: "recipes", Description: "Cooking."}, &hub)
+	if code != http.StatusCreated || hub.Slug != "recipes" || hub.Type != "hub" {
+		t.Fatalf("create hub: code=%d resp=%+v", code, hub)
+	}
+	code = request(t, http.MethodPost, srv.URL+"/hubs", "", api.CreateHubRequest{Slug: "recipes", Description: "Again."}, nil)
+	if code != http.StatusBadRequest {
+		t.Fatalf("duplicate hub: code=%d, want 400", code)
+	}
+
+	if err := st.Save("test", &vault.Note{
+		Slug: "old-recipe", Folder: vault.FolderNotes,
+		Frontmatter: vault.Frontmatter{Description: "A recipe."}, Body: "Steps.\n",
+	}); err != nil {
+		t.Fatalf("Save: %v", err)
+	}
+	if err := st.AddToHub("test", "recipes", "old-recipe", "a recipe"); err != nil {
+		t.Fatalf("AddToHub: %v", err)
+	}
+
+	var del api.DeleteResponse
+	code = request(t, http.MethodDelete, srv.URL+"/notes/old-recipe", "", nil, &del)
+	if code != http.StatusOK || len(del.RemovedFromHubs) != 1 || del.RemovedFromHubs[0] != "recipes" {
+		t.Fatalf("delete: code=%d resp=%+v", code, del)
+	}
+	code = request(t, http.MethodGet, srv.URL+"/notes/old-recipe", "", nil, nil)
+	if code != http.StatusNotFound {
+		t.Fatalf("get after delete: code=%d, want 404", code)
+	}
+	code = request(t, http.MethodDelete, srv.URL+"/notes/root", "", nil, nil)
+	if code != http.StatusBadRequest {
+		t.Fatalf("delete root: code=%d, want 400", code)
+	}
+}
+
 func TestAuth(t *testing.T) {
 	srv, _ := testServer(t, "secret")
 	if code := request(t, http.MethodGet, srv.URL+"/status", "", nil, nil); code != http.StatusUnauthorized {

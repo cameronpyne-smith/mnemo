@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bufio"
 	"fmt"
 	"io"
 	"os"
@@ -236,6 +237,84 @@ func newStatusCmd(configPath *string) *cobra.Command {
 			return nil
 		},
 	}
+}
+
+func newHubCmd(configPath *string) *cobra.Command {
+	hub := &cobra.Command{
+		Use:   "hub",
+		Short: "Manage topic hubs",
+	}
+	hub.AddCommand(newHubCreateCmd(configPath))
+	return hub
+}
+
+func newHubCreateCmd(configPath *string) *cobra.Command {
+	return &cobra.Command{
+		Use:   "create <slug> <description...>",
+		Short: "Create a hub and register it in the root hub",
+		Args:  cobra.MinimumNArgs(2),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			c, _, err := newClient(*configPath)
+			if err != nil {
+				return err
+			}
+			hub, err := c.CreateHub(args[0], strings.Join(args[1:], " "))
+			if err != nil {
+				return err
+			}
+			fmt.Fprintf(cmd.OutOrStdout(), "created hub %s, registered in root\n", hub.Slug)
+			return nil
+		},
+	}
+}
+
+func newDeleteCmd(configPath *string) *cobra.Command {
+	var yes bool
+
+	cmd := &cobra.Command{
+		Use:   "delete <slug>",
+		Short: "Delete a note permanently (git history is the undo)",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			c, _, err := newClient(*configPath)
+			if err != nil {
+				return err
+			}
+			slug := args[0]
+			out := cmd.OutOrStdout()
+			if !yes {
+				note, err := c.Get(slug)
+				if err != nil {
+					return err
+				}
+				fmt.Fprintf(out, "%s (%s) — %s\n", note.Slug, note.Folder, note.Description)
+				if len(note.Backlinks) > 0 {
+					fmt.Fprintf(out, "linked from: %s\n", strings.Join(note.Backlinks, ", "))
+				}
+				fmt.Fprint(out, "delete permanently? [y/N] ")
+				line, _ := bufio.NewReader(cmd.InOrStdin()).ReadString('\n')
+				answer := strings.ToLower(strings.TrimSpace(line))
+				if answer != "y" && answer != "yes" {
+					fmt.Fprintln(out, "aborted")
+					return nil
+				}
+			}
+			res, err := c.Delete(slug)
+			if err != nil {
+				return err
+			}
+			fmt.Fprintf(out, "deleted %s\n", slug)
+			if len(res.RemovedFromHubs) > 0 {
+				fmt.Fprintf(out, "removed from hubs: %s\n", strings.Join(res.RemovedFromHubs, ", "))
+			}
+			if len(res.DanglingLinks) > 0 {
+				fmt.Fprintf(out, "dangling links remain in: %s\n", strings.Join(res.DanglingLinks, ", "))
+			}
+			return nil
+		},
+	}
+	cmd.Flags().BoolVarP(&yes, "yes", "y", false, "skip the confirmation prompt")
+	return cmd
 }
 
 func newRenameCmd(configPath *string) *cobra.Command {
