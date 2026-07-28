@@ -94,7 +94,8 @@ func newServeCmd(configPath *string) *cobra.Command {
 				log.Info("filing agent disabled")
 			}
 
-			dream := dreamer.New(st, []dreamer.Pass{dreamer.NewGardener(st), dreamer.NewLinker(st)}, log)
+			linker := dreamer.NewLinker(st, ollama.New(cfg.Ollama.BaseURL), cfg.Ollama.AgentModel)
+			dream := dreamer.New(st, []dreamer.Pass{dreamer.NewGardener(st), linker}, log)
 			if cfg.Dreamer.IdleMinutes > 0 {
 				dream.IdleAfter = time.Duration(cfg.Dreamer.IdleMinutes) * time.Minute
 			}

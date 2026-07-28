@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/cameronpyne-smith/mnemo/internal/index"
+	"github.com/cameronpyne-smith/mnemo/internal/ollama"
 	"github.com/cameronpyne-smith/mnemo/internal/store"
 	"github.com/cameronpyne-smith/mnemo/internal/vault"
 )
@@ -244,9 +245,19 @@ func TestGardener(t *testing.T) {
 	}
 }
 
+type fakeLLM struct {
+	reply string
+	reqs  []ollama.ChatRequest
+}
+
+func (f *fakeLLM) Chat(ctx context.Context, req ollama.ChatRequest) (*ollama.ChatResponse, error) {
+	f.reqs = append(f.reqs, req)
+	return &ollama.ChatResponse{Message: ollama.Message{Role: ollama.RoleAssistant, Content: f.reply}}, nil
+}
+
 func TestLinkerEmptyVault(t *testing.T) {
 	st := testStore(t)
-	actions, err := NewLinker(st).Run(context.Background(), 10)
+	actions, err := NewLinker(st, &fakeLLM{}, "test-model").Run(context.Background(), 10)
 	if err != nil {
 		t.Fatalf("Run: %v", err)
 	}
@@ -263,7 +274,7 @@ func TestLinkerUnavailableWithoutEmbeddings(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("Save: %v", err)
 	}
-	if _, err := NewLinker(st).Run(context.Background(), 10); !errors.Is(err, store.ErrUnavailable) {
+	if _, err := NewLinker(st, &fakeLLM{}, "test-model").Run(context.Background(), 10); !errors.Is(err, store.ErrUnavailable) {
 		t.Fatalf("Run without embeddings: err = %v, want ErrUnavailable", err)
 	}
 }
@@ -275,13 +286,13 @@ func TestSelectCandidates(t *testing.T) {
 	}
 	linked := map[[2]string]bool{pairKey("c", "a"): true}
 
-	actions := selectCandidates(similar, linked, 10)
-	want := []string{
-		"candidate: [[a]] ↔ [[b]] (0.90)",
-		"candidate: [[b]] ↔ [[d]] (0.70)",
+	got := selectCandidates(similar, linked, 10)
+	want := []candidate{
+		{a: "a", b: "b", score: 0.9},
+		{a: "b", b: "d", score: 0.7},
 	}
-	if len(actions) != len(want) || actions[0] != want[0] || actions[1] != want[1] {
-		t.Errorf("actions = %v, want %v", actions, want)
+	if len(got) != len(want) || got[0] != want[0] || got[1] != want[1] {
+		t.Errorf("candidates = %v, want %v", got, want)
 	}
 }
 
@@ -289,9 +300,51 @@ func TestSelectCandidatesBudget(t *testing.T) {
 	similar := map[string][]index.Hit{
 		"a": {{Slug: "b", Score: 0.9}, {Slug: "c", Score: 0.5}},
 	}
-	actions := selectCandidates(similar, map[[2]string]bool{}, 1)
-	if len(actions) != 1 || actions[0] != "candidate: [[a]] ↔ [[b]] (0.90)" {
-		t.Errorf("actions = %v, want the single best-scoring pair", actions)
+	got := selectCandidates(similar, map[[2]string]bool{}, 1)
+	if len(got) != 1 || got[0] != (candidate{a: "a", b: "b", score: 0.9}) {
+		t.Errorf("candidates = %v, want the single best-scoring pair", got)
+	}
+}
+
+func TestJudgeCandidates(t *testing.T) {
+	st := testStore(t)
+	notes := []*vault.Note{
+		{Slug: "coffee", Folder: vault.FolderNotes,
+			Frontmatter: vault.Frontmatter{Description: "Coffee brewing."}, Body: "V60 recipe.\n"},
+		{Slug: "espresso", Folder: vault.FolderNotes,
+			Frontmatter: vault.Frontmatter{Description: "Espresso dialing."}, Body: "18g in, 36g out.\n"},
+	}
+	for _, n := range notes {
+		if err := st.Save("test", n); err != nil {
+			t.Fatalf("Save %s: %v", n.Slug, err)
+		}
+	}
+
+	llm := &fakeLLM{reply: "LINK"}
+	l := NewLinker(st, llm, "test-model")
+	actions, err := l.judgeCandidates(context.Background(), []candidate{{a: "coffee", b: "espresso", score: 0.9}})
+	if err != nil {
+		t.Fatalf("judgeCandidates: %v", err)
+	}
+	if len(actions) != 1 || actions[0] != "judged [[coffee]] ↔ [[espresso]] (0.90): LINK" {
+		t.Errorf("actions = %v", actions)
+	}
+
+	if len(llm.reqs) != 1 {
+		t.Fatalf("chat calls = %d, want 1", len(llm.reqs))
+	}
+	req := llm.reqs[0]
+	if req.Model != "test-model" || len(req.Tools) != 0 {
+		t.Errorf("request model/tools = %q/%v", req.Model, req.Tools)
+	}
+	if len(req.Messages) != 2 || req.Messages[0].Role != ollama.RoleSystem || req.Messages[1].Role != ollama.RoleUser {
+		t.Fatalf("messages = %+v", req.Messages)
+	}
+	user := req.Messages[1].Content
+	for _, want := range []string{"V60 recipe.", "18g in, 36g out.", "[[coffee]]", "[[espresso]]"} {
+		if !strings.Contains(user, want) {
+			t.Errorf("user message missing %q:\n%s", want, user)
+		}
 	}
 }
 
