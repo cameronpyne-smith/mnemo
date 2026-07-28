@@ -14,7 +14,10 @@ type ChatRequest struct {
 	Messages []Message      `json:"messages"`
 	Tools    []Tool         `json:"tools,omitempty"`
 	Options  map[string]any `json:"options,omitempty"`
-	Stream   bool           `json:"stream"`
+	// Format constrains decoding to a JSON schema (ollama structured
+	// outputs); the reply content is then guaranteed to unmarshal into it.
+	Format json.RawMessage `json:"format,omitempty"`
+	Stream bool            `json:"stream"`
 }
 
 type Message struct {

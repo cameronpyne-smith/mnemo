@@ -246,13 +246,17 @@ func TestGardener(t *testing.T) {
 }
 
 type fakeLLM struct {
-	reply string
-	reqs  []ollama.ChatRequest
+	replies []string
+	reqs    []ollama.ChatRequest
 }
 
 func (f *fakeLLM) Chat(ctx context.Context, req ollama.ChatRequest) (*ollama.ChatResponse, error) {
 	f.reqs = append(f.reqs, req)
-	return &ollama.ChatResponse{Message: ollama.Message{Role: ollama.RoleAssistant, Content: f.reply}}, nil
+	reply := ""
+	if n := len(f.reqs) - 1; n < len(f.replies) {
+		reply = f.replies[n]
+	}
+	return &ollama.ChatResponse{Message: ollama.Message{Role: ollama.RoleAssistant, Content: reply}}, nil
 }
 
 func TestLinkerEmptyVault(t *testing.T) {
@@ -281,8 +285,15 @@ func TestLinkerUnavailableWithoutEmbeddings(t *testing.T) {
 
 func TestSelectCandidates(t *testing.T) {
 	similar := map[string][]index.Hit{
-		"a": {{Slug: "b", Score: 0.9}, {Slug: "c", Score: 0.5}},
-		"b": {{Slug: "a", Score: 0.9}, {Slug: "d", Score: 0.7}},
+		"a": {
+			{Slug: "some-hub", Folder: vault.FolderHubs, Score: 0.95},
+			{Slug: "b", Folder: vault.FolderNotes, Score: 0.9},
+			{Slug: "c", Folder: vault.FolderNotes, Score: 0.5},
+		},
+		"b": {
+			{Slug: "a", Folder: vault.FolderNotes, Score: 0.9},
+			{Slug: "d", Folder: vault.FolderNotes, Score: 0.7},
+		},
 	}
 	linked := map[[2]string]bool{pairKey("c", "a"): true}
 
@@ -298,7 +309,10 @@ func TestSelectCandidates(t *testing.T) {
 
 func TestSelectCandidatesBudget(t *testing.T) {
 	similar := map[string][]index.Hit{
-		"a": {{Slug: "b", Score: 0.9}, {Slug: "c", Score: 0.5}},
+		"a": {
+			{Slug: "b", Folder: vault.FolderNotes, Score: 0.9},
+			{Slug: "c", Folder: vault.FolderNotes, Score: 0.5},
+		},
 	}
 	got := selectCandidates(similar, map[[2]string]bool{}, 1)
 	if len(got) != 1 || got[0] != (candidate{a: "a", b: "b", score: 0.9}) {
@@ -313,6 +327,8 @@ func TestJudgeCandidates(t *testing.T) {
 			Frontmatter: vault.Frontmatter{Description: "Coffee brewing."}, Body: "V60 recipe.\n"},
 		{Slug: "espresso", Folder: vault.FolderNotes,
 			Frontmatter: vault.Frontmatter{Description: "Espresso dialing."}, Body: "18g in, 36g out.\n"},
+		{Slug: "risotto", Folder: vault.FolderNotes,
+			Frontmatter: vault.Frontmatter{Description: "Risotto method."}, Body: "Stir constantly.\n"},
 	}
 	for _, n := range notes {
 		if err := st.Save("test", n); err != nil {
@@ -320,22 +336,43 @@ func TestJudgeCandidates(t *testing.T) {
 		}
 	}
 
-	llm := &fakeLLM{reply: "LINK"}
+	llm := &fakeLLM{replies: []string{
+		`{"link": true, "reason": "dialing espresso builds on brewing basics"}`,
+		`{"link": false, "reason": "different domains"}`,
+		`**No.** not json at all`,
+	}}
 	l := NewLinker(st, llm, "test-model")
-	actions, err := l.judgeCandidates(context.Background(), []candidate{{a: "coffee", b: "espresso", score: 0.9}})
+	actions, err := l.judgeCandidates(context.Background(), []candidate{
+		{a: "coffee", b: "espresso", score: 0.9},
+		{a: "espresso", b: "risotto", score: 0.7},
+		{a: "coffee", b: "risotto", score: 0.5},
+	})
 	if err != nil {
 		t.Fatalf("judgeCandidates: %v", err)
 	}
-	if len(actions) != 1 || actions[0] != "judged [[coffee]] ↔ [[espresso]] (0.90): LINK" {
-		t.Errorf("actions = %v", actions)
+	want := []string{
+		"link [[coffee]] ↔ [[espresso]] (0.90): dialing espresso builds on brewing basics",
+		"skip [[espresso]] ↔ [[risotto]] (0.70): different domains",
+		"skip [[coffee]] ↔ [[risotto]] (0.50): unparseable verdict: **No.** not json at all",
+	}
+	if len(actions) != len(want) {
+		t.Fatalf("actions = %v, want %v", actions, want)
+	}
+	for i := range want {
+		if actions[i] != want[i] {
+			t.Errorf("actions[%d] = %q, want %q", i, actions[i], want[i])
+		}
 	}
 
-	if len(llm.reqs) != 1 {
-		t.Fatalf("chat calls = %d, want 1", len(llm.reqs))
+	if len(llm.reqs) != 3 {
+		t.Fatalf("chat calls = %d, want 3", len(llm.reqs))
 	}
 	req := llm.reqs[0]
 	if req.Model != "test-model" || len(req.Tools) != 0 {
 		t.Errorf("request model/tools = %q/%v", req.Model, req.Tools)
+	}
+	if len(req.Format) == 0 || !strings.Contains(string(req.Format), `"link"`) {
+		t.Errorf("request format = %s, want verdict schema", req.Format)
 	}
 	if len(req.Messages) != 2 || req.Messages[0].Role != ollama.RoleSystem || req.Messages[1].Role != ollama.RoleUser {
 		t.Fatalf("messages = %+v", req.Messages)
