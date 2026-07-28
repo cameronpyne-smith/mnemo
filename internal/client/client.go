@@ -70,6 +70,14 @@ func (c *Client) Delete(slug string) (*api.DeleteResponse, error) {
 	return &resp, c.do(http.MethodDelete, "/notes/"+url.PathEscape(slug), nil, &resp)
 }
 
+// Dream triggers a full dreamer cycle and waits for it; the dedicated client
+// outlives the default timeout because LLM passes can run for minutes.
+func (c *Client) Dream() (*api.DreamResponse, error) {
+	var resp api.DreamResponse
+	slow := &Client{base: c.base, token: c.token, http: &http.Client{Timeout: 15 * time.Minute}}
+	return &resp, slow.do(http.MethodPost, "/dream", nil, &resp)
+}
+
 func (c *Client) Status() (*api.StatusResponse, error) {
 	var resp api.StatusResponse
 	return &resp, c.do(http.MethodGet, "/status", nil, &resp)

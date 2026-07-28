@@ -210,6 +210,23 @@ func newStatusCmd(configPath *string) *cobra.Command {
 			} else {
 				fmt.Fprintln(out, "embeddings: disabled")
 			}
+			if st.Dreamer.Enabled {
+				fmt.Fprint(out, "dreamer: ")
+				switch {
+				case st.Dreamer.Running:
+					fmt.Fprint(out, "cycle running")
+				case st.Dreamer.LastCycle != "":
+					fmt.Fprintf(out, "last cycle %s, %d action(s)", st.Dreamer.LastCycle, st.Dreamer.LastActions)
+				default:
+					fmt.Fprint(out, "no cycle yet")
+				}
+				if !st.Dreamer.Scheduled {
+					fmt.Fprint(out, " (manual only)")
+				}
+				fmt.Fprintln(out)
+			} else {
+				fmt.Fprintln(out, "dreamer: disabled")
+			}
 			if st.Git.Enabled {
 				fmt.Fprintf(out, "git: %d commits this session", st.Git.Commits)
 				if st.Git.LastError != "" {
@@ -233,6 +250,37 @@ func newStatusCmd(configPath *string) *cobra.Command {
 				}
 			} else {
 				fmt.Fprintln(out, "git: disabled")
+			}
+			return nil
+		},
+	}
+}
+
+func newDreamCmd(configPath *string) *cobra.Command {
+	return &cobra.Command{
+		Use:   "dream",
+		Short: "Trigger a dreamer cycle now and report what each pass did",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			c, _, err := newClient(*configPath)
+			if err != nil {
+				return err
+			}
+			resp, err := c.Dream()
+			if err != nil {
+				return err
+			}
+			out := cmd.OutOrStdout()
+			for _, p := range resp.Passes {
+				fmt.Fprintf(out, "%s: %d action(s)\n", p.Pass, len(p.Actions))
+				for _, a := range p.Actions {
+					fmt.Fprintf(out, "  - %s\n", a)
+				}
+				if p.Error != "" {
+					fmt.Fprintf(out, "  ! %s\n", p.Error)
+				}
+			}
+			if len(resp.Passes) == 0 {
+				fmt.Fprintln(out, "no passes configured")
 			}
 			return nil
 		},

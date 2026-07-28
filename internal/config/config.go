@@ -9,16 +9,24 @@ import (
 )
 
 type Config struct {
-	Vault  string `toml:"vault"`
-	Bind   string `toml:"bind"`
-	Token  string `toml:"token"`
-	Git    Git    `toml:"git"`
-	Ollama Ollama `toml:"ollama"`
+	Vault   string  `toml:"vault"`
+	Bind    string  `toml:"bind"`
+	Token   string  `toml:"token"`
+	Git     Git     `toml:"git"`
+	Ollama  Ollama  `toml:"ollama"`
+	Dreamer Dreamer `toml:"dreamer"`
 }
 
 type Git struct {
 	Enabled bool              `toml:"enabled"`
 	Remotes map[string]string `toml:"remotes"`
+}
+
+type Dreamer struct {
+	Enabled         bool `toml:"enabled"`
+	IdleMinutes     int  `toml:"idle_minutes"`
+	IntervalMinutes int  `toml:"interval_minutes"`
+	PassBudget      int  `toml:"pass_budget"`
 }
 
 type Ollama struct {
@@ -32,6 +40,12 @@ func Default() Config {
 	return Config{
 		Bind: "127.0.0.1:7920",
 		Git:  Git{Enabled: true},
+		Dreamer: Dreamer{
+			Enabled:         false,
+			IdleMinutes:     30,
+			IntervalMinutes: 360,
+			PassBudget:      20,
+		},
 		Ollama: Ollama{
 			BaseURL:               "http://localhost:11434",
 			AgentModel:            "qwen3.6:35b",

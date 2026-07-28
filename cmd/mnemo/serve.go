@@ -16,6 +16,7 @@ import (
 
 	"github.com/cameronpyne-smith/mnemo/internal/agent"
 	"github.com/cameronpyne-smith/mnemo/internal/config"
+	"github.com/cameronpyne-smith/mnemo/internal/dreamer"
 	"github.com/cameronpyne-smith/mnemo/internal/embedder"
 	"github.com/cameronpyne-smith/mnemo/internal/gitsync"
 	"github.com/cameronpyne-smith/mnemo/internal/mcp"
@@ -93,9 +94,27 @@ func newServeCmd(configPath *string) *cobra.Command {
 				log.Info("filing agent disabled")
 			}
 
+			dream := dreamer.New(st, []dreamer.Pass{dreamer.NewGardener(st), dreamer.NewLinker(st)}, log)
+			if cfg.Dreamer.IdleMinutes > 0 {
+				dream.IdleAfter = time.Duration(cfg.Dreamer.IdleMinutes) * time.Minute
+			}
+			if cfg.Dreamer.IntervalMinutes > 0 {
+				dream.Interval = time.Duration(cfg.Dreamer.IntervalMinutes) * time.Minute
+			}
+			if cfg.Dreamer.PassBudget > 0 {
+				dream.Budget = cfg.Dreamer.PassBudget
+			}
+			if cfg.Dreamer.Enabled {
+				dream.Scheduled = true
+				go dream.Run(ctx)
+				log.Info("dreamer scheduled", "idle_after", dream.IdleAfter, "interval", dream.Interval)
+			} else {
+				log.Info("dreamer scheduler disabled — trigger cycles manually with 'mnemo dream'")
+			}
+
 			srv := &http.Server{
 				Addr:    cfg.Bind,
-				Handler: server.New(st, worker, cfg.Token, mcp.Handler(st, worker, log), syncer),
+				Handler: server.New(st, worker, cfg.Token, mcp.Handler(st, worker, log), syncer, dream),
 				// Request contexts inherit the signal context so long-lived
 				// MCP streams end when the daemon is asked to stop; otherwise
 				// Shutdown waits its full timeout on them.

@@ -3,12 +3,14 @@ package server
 import (
 	"bytes"
 	"encoding/json"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
 
 	"github.com/cameronpyne-smith/mnemo/internal/api"
+	"github.com/cameronpyne-smith/mnemo/internal/dreamer"
 	"github.com/cameronpyne-smith/mnemo/internal/store"
 	"github.com/cameronpyne-smith/mnemo/internal/vault"
 )
@@ -23,7 +25,7 @@ func testServer(t *testing.T, token string) (*httptest.Server, *store.Store) {
 	if err != nil {
 		t.Fatalf("store.Open: %v", err)
 	}
-	srv := httptest.NewServer(New(st, nil, token, nil, nil))
+	srv := httptest.NewServer(New(st, nil, token, nil, nil, dreamer.New(st, []dreamer.Pass{dreamer.NewGardener(st)}, slog.New(slog.DiscardHandler))))
 	t.Cleanup(srv.Close)
 	return srv, st
 }
@@ -196,6 +198,33 @@ func TestHubCreateAndDeleteFlow(t *testing.T) {
 	code = request(t, http.MethodDelete, srv.URL+"/notes/root", "", nil, nil)
 	if code != http.StatusBadRequest {
 		t.Fatalf("delete root: code=%d, want 400", code)
+	}
+}
+
+func TestDreamEndpoint(t *testing.T) {
+	srv, st := testServer(t, "")
+	if err := st.Save("test", &vault.Note{
+		Slug: "loose", Folder: vault.FolderNotes,
+		Frontmatter: vault.Frontmatter{Description: "Loose note."}, Body: "x\n",
+	}); err != nil {
+		t.Fatalf("Save: %v", err)
+	}
+
+	var resp api.DreamResponse
+	code := request(t, http.MethodPost, srv.URL+"/dream", "", nil, &resp)
+	if code != http.StatusOK || len(resp.Passes) != 1 || resp.Passes[0].Pass != "gardener" {
+		t.Fatalf("dream: code=%d resp=%+v", code, resp)
+	}
+	if joined := strings.Join(resp.Passes[0].Actions, "\n"); !strings.Contains(joined, "in no hub: [[loose]]") {
+		t.Errorf("gardener actions missing orphan report:\n%s", joined)
+	}
+
+	var status api.StatusResponse
+	if code := request(t, http.MethodGet, srv.URL+"/status", "", nil, &status); code != http.StatusOK {
+		t.Fatalf("status: code=%d", code)
+	}
+	if !status.Dreamer.Enabled || status.Dreamer.LastCycle == "" || status.Dreamer.LastActions == 0 {
+		t.Errorf("dreamer status = %+v", status.Dreamer)
 	}
 }
 

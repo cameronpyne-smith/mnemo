@@ -88,6 +88,24 @@ type GitStatus struct {
 	Remotes   []GitRemoteStatus `json:"remotes,omitempty"`
 }
 
+type DreamPassReport struct {
+	Pass    string   `json:"pass"`
+	Actions []string `json:"actions,omitempty"`
+	Error   string   `json:"error,omitempty"`
+}
+
+type DreamResponse struct {
+	Passes []DreamPassReport `json:"passes"`
+}
+
+type DreamerStatus struct {
+	Enabled     bool   `json:"enabled"`
+	Scheduled   bool   `json:"scheduled"`
+	Running     bool   `json:"running"`
+	LastCycle   string `json:"last_cycle,omitempty"`
+	LastActions int    `json:"last_actions"`
+}
+
 type EmbeddingsStatus struct {
 	Enabled   bool   `json:"enabled"`
 	Embedded  int    `json:"embedded"`
@@ -103,6 +121,7 @@ type StatusResponse struct {
 	Filing     FilingStatus     `json:"filing"`
 	Git        GitStatus        `json:"git"`
 	Embeddings EmbeddingsStatus `json:"embeddings"`
+	Dreamer    DreamerStatus    `json:"dreamer"`
 }
 
 type ErrorResponse struct {

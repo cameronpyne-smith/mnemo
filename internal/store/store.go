@@ -19,6 +19,7 @@ type Store struct {
 	vault     *vault.Vault
 	idx       *index.Index
 	now       func() time.Time
+	lastMut   time.Time
 	committer Committer
 	embed     *embedder.Worker
 	query     *embedder.QueryEmbedder
@@ -33,9 +34,10 @@ type Committer interface {
 }
 
 const (
-	ActorAPI    = "api"
-	ActorMCP    = "mcp"
-	ActorFiling = "filing"
+	ActorAPI     = "api"
+	ActorMCP     = "mcp"
+	ActorFiling  = "filing"
+	ActorDreamer = "dreamer"
 )
 
 func (s *Store) SetCommitter(c Committer) { s.committer = c }
@@ -59,9 +61,23 @@ func (s *Store) wakeEmbed() {
 }
 
 func (s *Store) record(actor, action string, paths ...string) {
+	s.lastMut = s.now()
 	if s.committer != nil {
 		s.committer.Commit(actor, action, paths)
 	}
+}
+
+// LastMutation reports when the store last completed a write. Daemon start
+// counts as a mutation so idle-gated work waits out a fresh boot.
+func (s *Store) LastMutation() time.Time {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.lastMut
+}
+
+func (s *Store) Exists(slug string) bool {
+	_, ok := s.vault.Locate(slug)
+	return ok
 }
 
 func notePath(folder, slug string) string { return folder + "/" + slug + ".md" }
@@ -96,7 +112,7 @@ func Open(path string) (*Store, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &Store{vault: v, idx: idx, now: time.Now}, nil
+	return &Store{vault: v, idx: idx, now: time.Now, lastMut: time.Now()}, nil
 }
 
 // queryEmbedTimeout bounds how long a search waits on the model before

@@ -34,10 +34,11 @@ All endpoints require the bearer token (`Authorization: Bearer <token>`); the da
 | `DELETE /notes/{slug}` | — | Hard delete; strips hub entry lines, reports dangling links |
 | `POST /hubs` | — | Create a hub and register it in the root hub |
 | `POST /capture` | `vault_capture` | Dump raw content into the inbox |
-| `GET  /status` | — | Daemon health, index stats, filing/git/embedding state |
+| `POST /dream` | — | Trigger a dreamer cycle now; returns per-pass action reports |
+| `GET  /status` | — | Daemon health, index stats, filing/git/embedding/dreamer state |
 | `/mcp` | — | MCP server mount (streamable HTTP) |
 
-**Caveat — one token guards everything.** The endpoints without an MCP tool (`rename`, `DELETE /notes/{slug}`, `POST /hubs`) are intended as human-only, but today they sit behind the same bearer token as the MCP mount, so any MCP consumer that reads its own config can call them. Not a security boundary yet — see "Admin surface auth" under *To be decided later* in `PLAN.md`.
+**Caveat — one token guards everything.** The endpoints without an MCP tool (`rename`, `DELETE /notes/{slug}`, `POST /hubs`, `POST /dream`) are intended as human-only, but today they sit behind the same bearer token as the MCP mount, so any MCP consumer that reads its own config can call them. Not a security boundary yet — see "Admin surface auth" under *To be decided later* in `PLAN.md`.
 
 ## CLI
 
@@ -53,6 +54,7 @@ All endpoints require the bearer token (`Authorization: Bearer <token>`); the da
 | `mnemo get <slug>` | Print a note with tags and backlinks |
 | `mnemo status` | Daemon + vault + filing + git + embedding status |
 | `mnemo rename <slug> <new-slug>` | Rename, rewriting all inbound links |
+| `mnemo dream` | Trigger a dreamer cycle now and print what each pass did |
 | `mnemo hub create <slug> <description...>` | Create a hub, registered in root.md with a matching description |
 | `mnemo delete <slug>` | Hard delete with confirmation (`-y` skips); strips hub entries, reports dangling links |
 | `mnemo backup init <path>` | Create + register an append-only bare git remote (run on the vault machine) |

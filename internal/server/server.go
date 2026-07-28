@@ -11,6 +11,7 @@ import (
 
 	"github.com/cameronpyne-smith/mnemo/internal/agent"
 	"github.com/cameronpyne-smith/mnemo/internal/api"
+	"github.com/cameronpyne-smith/mnemo/internal/dreamer"
 	"github.com/cameronpyne-smith/mnemo/internal/gitsync"
 	"github.com/cameronpyne-smith/mnemo/internal/store"
 	"github.com/cameronpyne-smith/mnemo/internal/vault"
@@ -21,13 +22,17 @@ type Server struct {
 	worker *agent.Worker
 	token  string
 	sync   *gitsync.Syncer
+	dream  *dreamer.Dreamer
 }
 
-func New(st *store.Store, worker *agent.Worker, token string, mcp http.Handler, sync *gitsync.Syncer) http.Handler {
-	s := &Server{store: st, worker: worker, token: token, sync: sync}
+func New(st *store.Store, worker *agent.Worker, token string, mcp http.Handler, sync *gitsync.Syncer, dream *dreamer.Dreamer) http.Handler {
+	s := &Server{store: st, worker: worker, token: token, sync: sync, dream: dream}
 	mux := http.NewServeMux()
 	if mcp != nil {
 		mux.Handle("/mcp", mcp)
+	}
+	if dream != nil {
+		mux.HandleFunc("POST /dream", s.handleDream)
 	}
 	mux.HandleFunc("GET /index", s.handleIndex)
 	mux.HandleFunc("GET /search", s.handleSearch)
@@ -176,6 +181,21 @@ func (s *Server) handleDelete(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+func (s *Server) handleDream(w http.ResponseWriter, r *http.Request) {
+	reports, err := s.dream.Dream(r.Context())
+	if err != nil {
+		writeError(w, statusFor(err), err)
+		return
+	}
+	resp := api.DreamResponse{Passes: make([]api.DreamPassReport, 0, len(reports))}
+	for _, rep := range reports {
+		resp.Passes = append(resp.Passes, api.DreamPassReport{
+			Pass: rep.Pass, Actions: rep.Actions, Error: rep.Err,
+		})
+	}
+	writeJSON(w, http.StatusOK, resp)
+}
+
 func (s *Server) handleCapture(w http.ResponseWriter, r *http.Request) {
 	var req api.CaptureRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -209,6 +229,15 @@ func (s *Server) handleStatus(w http.ResponseWriter, r *http.Request) {
 	if s.worker != nil {
 		processed, failed, inflight := s.worker.Stats()
 		resp.Filing = api.FilingStatus{Enabled: true, Processed: processed, Failed: failed, InFlight: inflight}
+	}
+	if s.dream != nil {
+		ds := s.dream.Stats()
+		resp.Dreamer = api.DreamerStatus{
+			Enabled: true, Scheduled: ds.Scheduled, Running: ds.Running, LastActions: ds.LastActions,
+		}
+		if !ds.LastCycle.IsZero() {
+			resp.Dreamer.LastCycle = ds.LastCycle.Format(time.RFC3339)
+		}
 	}
 	if s.sync != nil {
 		gs := s.sync.Stats(r.Context())
