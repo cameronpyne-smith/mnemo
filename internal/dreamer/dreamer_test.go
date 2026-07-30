@@ -393,6 +393,11 @@ func TestJudgeCandidates(t *testing.T) {
 			t.Errorf("request format missing %s: %s", part, req.Format)
 		}
 	}
+	format := string(req.Format)
+	reasonAt, linkAt, intoAt := strings.Index(format, `"reason"`), strings.Index(format, `"link"`), strings.Index(format, `"into"`)
+	if !(reasonAt < linkAt && linkAt < intoAt) {
+		t.Errorf("schema field order must be reason, link, into (generation order = reasoning before verdict): %s", format)
+	}
 	if len(req.Messages) != 2 || req.Messages[0].Role != ollama.RoleSystem || req.Messages[1].Role != ollama.RoleUser {
 		t.Fatalf("messages = %+v", req.Messages)
 	}

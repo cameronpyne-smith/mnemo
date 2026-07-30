@@ -107,24 +107,25 @@ func pairKey(a, b string) [2]string {
 	return [2]string{a, b}
 }
 
-const judgePrompt = `You judge proposed connections between notes in a personal knowledge vault. Wikilinks like [[some-slug]] are followed by an LLM assistant lazily deciding what else to read, so a link is only worth adding when reading one note would genuinely change what that reader does with the other. Judge whether the two notes below should be connected. Be very selective: the default answer is no. The question is not "are these notes related" — every pair you see was pre-selected as similar — but whether a reader of one note would really benefit from being pointed to the other. Give at most one sentence of reasoning; do not restate the verdict in the reason. Set into to the slug of the note whose reader benefits most from the pointer.`
+const judgePrompt = `You judge proposed connections between notes in a personal knowledge vault. Wikilinks like [[some-slug]] are followed by an LLM assistant lazily deciding what else to read, so a link is only worth adding when reading one note would genuinely change what that reader does with the other. Judge whether the two notes below should be connected. Be very selective: the default answer is no. The question is not "are these notes related" — every pair you see was pre-selected as similar — but whether a reader of one note would really benefit from being pointed to the other. Write reason as one sentence addressed to a future reader of the note, saying concretely what the other note adds for them — if the link is worth adding, this line is stored in the vault as the link's annotation. Do not restate the verdict in it. Set into to the slug of the note whose reader benefits most from the pointer.`
 
 // judgeFormat is enforced by ollama structured outputs: the reply is
 // guaranteed to unmarshal into verdict, so a parse failure means the
 // model server misbehaved and the pair is skipped, never linked. The
 // enum on into means the model cannot place a link anywhere but in the
 // judged pair.
+//
+// Property order is load-bearing: constrained decoding emits fields in
+// schema order, so reason must come first (the model reasons before
+// committing to a verdict) and into last (choosing a placement before
+// deciding link primes it toward linking). Never build this schema from
+// a Go map — map keys marshal alphabetically, which reorders the fields
+// to into/link/reason and measurably degrades the judge.
 func judgeFormat(a, b string) json.RawMessage {
-	schema, _ := json.Marshal(map[string]any{
-		"type": "object",
-		"properties": map[string]any{
-			"link":   map[string]any{"type": "boolean"},
-			"reason": map[string]any{"type": "string"},
-			"into":   map[string]any{"type": "string", "enum": []string{a, b}},
-		},
-		"required": []string{"link", "reason", "into"},
-	})
-	return schema
+	enum, _ := json.Marshal([]string{a, b})
+	return json.RawMessage(fmt.Sprintf(
+		`{"type":"object","properties":{"reason":{"type":"string"},"link":{"type":"boolean"},"into":{"type":"string","enum":%s}},"required":["reason","link","into"]}`,
+		enum))
 }
 
 func (l *Linker) judgeCandidates(ctx context.Context, candidates []candidate) ([]string, error) {
