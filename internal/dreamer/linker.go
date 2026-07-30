@@ -5,12 +5,18 @@ import (
 	"encoding/json"
 	"fmt"
 	"sort"
+	"strings"
 
 	"github.com/cameronpyne-smith/mnemo/internal/index"
 	"github.com/cameronpyne-smith/mnemo/internal/ollama"
 	"github.com/cameronpyne-smith/mnemo/internal/store"
 	"github.com/cameronpyne-smith/mnemo/internal/vault"
 )
+
+// minCandidateScore drops pairs the embedding space already rules out:
+// in observed runs everything below ~0.3 was judged skip, so such pairs
+// are not worth a model call.
+const minCandidateScore = 0.3
 
 type LLM interface {
 	Chat(ctx context.Context, req ollama.ChatRequest) (*ollama.ChatResponse, error)
@@ -20,15 +26,21 @@ type Linker struct {
 	Store *store.Store
 	LLM   LLM
 	Model string
+
+	// judged remembers pairs already put to the model this daemon run, so
+	// skip verdicts are not re-judged every cycle. In-memory on purpose: a
+	// restart re-judges, which lets stale skips heal as notes grow.
+	judged map[[2]string]bool
 }
 
 type verdict struct {
 	Link   bool   `json:"link"`
 	Reason string `json:"reason"`
+	Into   string `json:"into"`
 }
 
 func NewLinker(st *store.Store, llm LLM, model string) *Linker {
-	return &Linker{Store: st, LLM: llm, Model: model}
+	return &Linker{Store: st, LLM: llm, Model: model, judged: make(map[[2]string]bool)}
 }
 
 func (l *Linker) Name() string { return "linker" }
@@ -50,6 +62,9 @@ func (l *Linker) Run(ctx context.Context, budget int) ([]string, error) {
 		}
 		similarNotes[note.Slug] = similar
 	}
+	for pair := range l.judged {
+		linked[pair] = true
+	}
 	return l.judgeCandidates(ctx, selectCandidates(similarNotes, linked, budget))
 }
 
@@ -67,7 +82,7 @@ func selectCandidates(similarNotes map[string][]index.Hit, linked map[[2]string]
 	var candidates []candidate
 	for source, hits := range similarNotes {
 		for _, hit := range hits {
-			if hit.Folder != vault.FolderNotes {
+			if hit.Folder != vault.FolderNotes || hit.Score < minCandidateScore {
 				continue
 			}
 			key := pairKey(source, hit.Slug)
@@ -92,16 +107,33 @@ func pairKey(a, b string) [2]string {
 	return [2]string{a, b}
 }
 
-const judgePrompt = `You judge proposed connections between notes in a personal knowledge vault. Wikilinks like [[some-slug]] are followed by an LLM assistant lazily deciding what else to read, so a link is only worth adding when reading one note would genuinely change what that reader does with the other. Judge whether the two notes below should be connected. Be very selective: the default answer is no. The question is not "are these notes related" — every pair you see was pre-selected as similar — but whether a reader of one note would really benefit from being pointed to the other. Give at most one sentence of reasoning.`
+const judgePrompt = `You judge proposed connections between notes in a personal knowledge vault. Wikilinks like [[some-slug]] are followed by an LLM assistant lazily deciding what else to read, so a link is only worth adding when reading one note would genuinely change what that reader does with the other. Judge whether the two notes below should be connected. Be very selective: the default answer is no. The question is not "are these notes related" — every pair you see was pre-selected as similar — but whether a reader of one note would really benefit from being pointed to the other. Give at most one sentence of reasoning; do not restate the verdict in the reason. Set into to the slug of the note whose reader benefits most from the pointer.`
 
 // judgeFormat is enforced by ollama structured outputs: the reply is
 // guaranteed to unmarshal into verdict, so a parse failure means the
-// model server misbehaved and the pair is skipped, never linked.
-var judgeFormat = json.RawMessage(`{"type":"object","properties":{"link":{"type":"boolean"},"reason":{"type":"string"}},"required":["link","reason"]}`)
+// model server misbehaved and the pair is skipped, never linked. The
+// enum on into means the model cannot place a link anywhere but in the
+// judged pair.
+func judgeFormat(a, b string) json.RawMessage {
+	schema, _ := json.Marshal(map[string]any{
+		"type": "object",
+		"properties": map[string]any{
+			"link":   map[string]any{"type": "boolean"},
+			"reason": map[string]any{"type": "string"},
+			"into":   map[string]any{"type": "string", "enum": []string{a, b}},
+		},
+		"required": []string{"link", "reason", "into"},
+	})
+	return schema
+}
 
 func (l *Linker) judgeCandidates(ctx context.Context, candidates []candidate) ([]string, error) {
 	actions := make([]string, 0, len(candidates))
 	for _, c := range candidates {
+		key := pairKey(c.a, c.b)
+		if l.judged[key] {
+			continue
+		}
 		av, err := l.Store.Get(c.a)
 		if err != nil {
 			return actions, fmt.Errorf("linker: reading %s: %w", c.a, err)
@@ -112,7 +144,7 @@ func (l *Linker) judgeCandidates(ctx context.Context, candidates []candidate) ([
 		}
 		resp, err := l.LLM.Chat(ctx, ollama.ChatRequest{
 			Model:  l.Model,
-			Format: judgeFormat,
+			Format: judgeFormat(c.a, c.b),
 			Messages: []ollama.Message{
 				{Role: ollama.RoleSystem, Content: judgePrompt},
 				{Role: ollama.RoleUser, Content: fmt.Sprintf(
@@ -130,11 +162,21 @@ func (l *Linker) judgeCandidates(ctx context.Context, candidates []candidate) ([
 			actions = append(actions, fmt.Sprintf("skip [[%s]] ↔ [[%s]] (%.2f): unparseable verdict: %s", c.a, c.b, c.score, resp.Message.Content))
 			continue
 		}
-		outcome := "skip"
-		if v.Link {
-			outcome = "link"
+		reason := strings.Join(strings.Fields(v.Reason), " ")
+		if !v.Link {
+			l.judged[key] = true
+			actions = append(actions, fmt.Sprintf("skip [[%s]] ↔ [[%s]] (%.2f): %s", c.a, c.b, c.score, reason))
+			continue
 		}
-		actions = append(actions, fmt.Sprintf("%s [[%s]] ↔ [[%s]] (%.2f): %s", outcome, c.a, c.b, c.score, v.Reason))
+		into, other := c.a, c.b
+		if v.Into == c.b {
+			into, other = c.b, c.a
+		}
+		if err := l.Store.Link(store.ActorDreamer, into, other, reason); err != nil {
+			return actions, fmt.Errorf("linker: linking [[%s]] -> [[%s]]: %w", into, other, err)
+		}
+		l.judged[key] = true
+		actions = append(actions, fmt.Sprintf("linked [[%s]] → [[%s]] (%.2f): %s", into, other, c.score, reason))
 	}
 	return actions, nil
 }

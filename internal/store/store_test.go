@@ -346,6 +346,68 @@ func TestEditNote(t *testing.T) {
 	}
 }
 
+func TestLink(t *testing.T) {
+	s := testStore(t)
+	for _, slug := range []string{"alpha", "beta", "gamma"} {
+		mustSave(t, s, &vault.Note{
+			Slug: slug, Folder: vault.FolderNotes,
+			Frontmatter: vault.Frontmatter{Description: slug + "."}, Body: "about " + slug + "\n",
+		})
+	}
+
+	if err := s.Link("dreamer", "alpha", "beta", "beta gives context"); err != nil {
+		t.Fatalf("Link: %v", err)
+	}
+	view, err := s.Get("alpha")
+	if err != nil {
+		t.Fatalf("Get: %v", err)
+	}
+	if !strings.Contains(view.Note.Body, "## Related") || !strings.Contains(view.Note.Body, "- [[beta]] — beta gives context") {
+		t.Errorf("body after first link:\n%s", view.Note.Body)
+	}
+
+	if err := s.Link("dreamer", "alpha", "beta", "duplicate"); err != nil {
+		t.Fatalf("repeat Link: %v", err)
+	}
+	view, _ = s.Get("alpha")
+	if strings.Count(view.Note.Body, "[[beta]]") != 1 {
+		t.Errorf("repeat link duplicated entry:\n%s", view.Note.Body)
+	}
+
+	if err := s.Link("dreamer", "alpha", "gamma", "also related"); err != nil {
+		t.Fatalf("second Link: %v", err)
+	}
+	view, _ = s.Get("alpha")
+	if strings.Count(view.Note.Body, "## Related") != 1 {
+		t.Errorf("section duplicated:\n%s", view.Note.Body)
+	}
+	if !strings.Contains(view.Note.Body, "- [[gamma]] — also related") {
+		t.Errorf("second entry missing:\n%s", view.Note.Body)
+	}
+
+	beta, err := s.Get("beta")
+	if err != nil {
+		t.Fatalf("Get beta: %v", err)
+	}
+	if beta.Note.Body != "about beta\n" {
+		t.Errorf("link target body mutated: %q", beta.Note.Body)
+	}
+	found := false
+	for _, bl := range beta.Backlinks {
+		found = found || bl == "alpha"
+	}
+	if !found {
+		t.Errorf("beta backlinks = %v, want alpha", beta.Backlinks)
+	}
+
+	if err := s.Link("dreamer", "alpha", "missing", "x"); !errors.Is(err, ErrNotFound) {
+		t.Errorf("link to missing note: err = %v, want ErrNotFound", err)
+	}
+	if err := s.Link("dreamer", "missing", "alpha", "x"); !errors.Is(err, ErrNotFound) {
+		t.Errorf("link from missing note: err = %v, want ErrNotFound", err)
+	}
+}
+
 func TestStatus(t *testing.T) {
 	s := testStore(t)
 	if _, err := s.Capture("test", "something", "test"); err != nil {

@@ -289,6 +289,7 @@ func TestSelectCandidates(t *testing.T) {
 			{Slug: "some-hub", Folder: vault.FolderHubs, Score: 0.95},
 			{Slug: "b", Folder: vault.FolderNotes, Score: 0.9},
 			{Slug: "c", Folder: vault.FolderNotes, Score: 0.5},
+			{Slug: "e", Folder: vault.FolderNotes, Score: 0.2},
 		},
 		"b": {
 			{Slug: "a", Folder: vault.FolderNotes, Score: 0.9},
@@ -337,21 +338,22 @@ func TestJudgeCandidates(t *testing.T) {
 	}
 
 	llm := &fakeLLM{replies: []string{
-		`{"link": true, "reason": "dialing espresso builds on brewing basics"}`,
-		`{"link": false, "reason": "different domains"}`,
+		`{"link": true, "reason": "dialing espresso builds on brewing basics", "into": "espresso"}`,
+		`{"link": false, "reason": "different domains", "into": "espresso"}`,
 		`**No.** not json at all`,
 	}}
 	l := NewLinker(st, llm, "test-model")
-	actions, err := l.judgeCandidates(context.Background(), []candidate{
+	pairs := []candidate{
 		{a: "coffee", b: "espresso", score: 0.9},
 		{a: "espresso", b: "risotto", score: 0.7},
 		{a: "coffee", b: "risotto", score: 0.5},
-	})
+	}
+	actions, err := l.judgeCandidates(context.Background(), pairs)
 	if err != nil {
 		t.Fatalf("judgeCandidates: %v", err)
 	}
 	want := []string{
-		"link [[coffee]] ↔ [[espresso]] (0.90): dialing espresso builds on brewing basics",
+		"linked [[espresso]] → [[coffee]] (0.90): dialing espresso builds on brewing basics",
 		"skip [[espresso]] ↔ [[risotto]] (0.70): different domains",
 		"skip [[coffee]] ↔ [[risotto]] (0.50): unparseable verdict: **No.** not json at all",
 	}
@@ -364,6 +366,21 @@ func TestJudgeCandidates(t *testing.T) {
 		}
 	}
 
+	view, err := st.Get("espresso")
+	if err != nil {
+		t.Fatalf("Get espresso: %v", err)
+	}
+	if !strings.Contains(view.Note.Body, "## Related") || !strings.Contains(view.Note.Body, "- [[coffee]] — dialing espresso builds on brewing basics") {
+		t.Errorf("link not written into espresso:\n%s", view.Note.Body)
+	}
+	coffee, err := st.Get("coffee")
+	if err != nil {
+		t.Fatalf("Get coffee: %v", err)
+	}
+	if strings.Contains(coffee.Note.Body, "## Related") {
+		t.Errorf("link written into wrong side:\n%s", coffee.Note.Body)
+	}
+
 	if len(llm.reqs) != 3 {
 		t.Fatalf("chat calls = %d, want 3", len(llm.reqs))
 	}
@@ -371,8 +388,10 @@ func TestJudgeCandidates(t *testing.T) {
 	if req.Model != "test-model" || len(req.Tools) != 0 {
 		t.Errorf("request model/tools = %q/%v", req.Model, req.Tools)
 	}
-	if len(req.Format) == 0 || !strings.Contains(string(req.Format), `"link"`) {
-		t.Errorf("request format = %s, want verdict schema", req.Format)
+	for _, part := range []string{`"link"`, `"enum"`, `"coffee"`, `"espresso"`} {
+		if !strings.Contains(string(req.Format), part) {
+			t.Errorf("request format missing %s: %s", part, req.Format)
+		}
 	}
 	if len(req.Messages) != 2 || req.Messages[0].Role != ollama.RoleSystem || req.Messages[1].Role != ollama.RoleUser {
 		t.Fatalf("messages = %+v", req.Messages)
@@ -382,6 +401,17 @@ func TestJudgeCandidates(t *testing.T) {
 		if !strings.Contains(user, want) {
 			t.Errorf("user message missing %q:\n%s", want, user)
 		}
+	}
+
+	again, err := l.judgeCandidates(context.Background(), pairs)
+	if err != nil {
+		t.Fatalf("second judgeCandidates: %v", err)
+	}
+	if len(llm.reqs) != 4 {
+		t.Errorf("chat calls after re-run = %d, want 4 (only the unparseable pair re-judged)", len(llm.reqs))
+	}
+	if len(again) != 1 || !strings.HasPrefix(again[0], "skip [[coffee]] ↔ [[risotto]]") {
+		t.Errorf("re-run actions = %v, want only the unparseable pair", again)
 	}
 }
 
