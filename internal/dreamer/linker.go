@@ -34,9 +34,10 @@ type Linker struct {
 }
 
 type verdict struct {
-	Link   bool   `json:"link"`
-	Reason string `json:"reason"`
-	Into   string `json:"into"`
+	Deliberation string `json:"deliberation"`
+	Link         bool   `json:"link"`
+	Into         string `json:"into"`
+	Reason       string `json:"reason"`
 }
 
 func NewLinker(st *store.Store, llm LLM, model string) *Linker {
@@ -107,7 +108,7 @@ func pairKey(a, b string) [2]string {
 	return [2]string{a, b}
 }
 
-const judgePrompt = `You judge proposed connections between notes in a personal knowledge vault. Wikilinks like [[some-slug]] are followed by an LLM assistant lazily deciding what else to read, so a link is only worth adding when reading one note would genuinely change what that reader does with the other. Judge whether the two notes below should be connected. Be very selective: the default answer is no. The question is not "are these notes related" — every pair you see was pre-selected as similar — but whether a reader of one note would really benefit from being pointed to the other. Write reason as one sentence addressed to a future reader of the note, saying concretely what the other note adds for them — if the link is worth adding, this line is stored in the vault as the link's annotation. Do not restate the verdict in it. Set into to the slug of the note whose reader benefits most from the pointer.`
+const judgePrompt = `You judge proposed connections between notes in a personal knowledge vault. Wikilinks like [[some-slug]] are followed by an LLM assistant lazily deciding what else to read, so a link is only worth adding when reading one note would genuinely change what that reader does with the other. Judge whether the two notes below should be connected. Be very selective: the default answer is no. The question is not "are these notes related" — every pair you see was pre-selected as similar — but whether a reader of one note would really benefit from being pointed to the other. Answer with four fields, in order. deliberation: reason freely about whether the link is worth adding; this is scratch space and is never stored. link: your verdict. into: the slug of the note whose reader benefits most from the pointer. reason: one sentence addressed to a future reader of the into note, saying concretely what the other note adds for them — it is stored in the vault verbatim as the link's annotation, so do not restate the verdict or write any slugs in it; leave it empty when link is false.`
 
 // judgeFormat is enforced by ollama structured outputs: the reply is
 // guaranteed to unmarshal into verdict, so a parse failure means the
@@ -116,17 +117,23 @@ const judgePrompt = `You judge proposed connections between notes in a personal 
 // judged pair.
 //
 // Property order is load-bearing: constrained decoding emits fields in
-// schema order, so reason must come first (the model reasons before
-// committing to a verdict) and into last (choosing a placement before
-// deciding link primes it toward linking). Never build this schema from
-// a Go map — map keys marshal alphabetically, which reorders the fields
-// to into/link/reason and measurably degrades the judge.
+// schema order. deliberation must come first (the model reasons before
+// committing to a verdict) and reason last — it is the stored annotation,
+// addressed to the into note's reader, so it must be written after both
+// verdict and placement are decided; when it came first the model crammed
+// verdict words and slugs into it. Never build this schema from a Go map —
+// map keys marshal alphabetically, which reorders the fields and
+// measurably degrades the judge.
 func judgeFormat(a, b string) json.RawMessage {
 	enum, _ := json.Marshal([]string{a, b})
 	return json.RawMessage(fmt.Sprintf(
-		`{"type":"object","properties":{"reason":{"type":"string"},"link":{"type":"boolean"},"into":{"type":"string","enum":%s}},"required":["reason","link","into"]}`,
+		`{"type":"object","properties":{"deliberation":{"type":"string"},"link":{"type":"boolean"},"into":{"type":"string","enum":%s},"reason":{"type":"string"}},"required":["deliberation","link","into","reason"]}`,
 		enum))
 }
+
+// reason is written verbatim into a note body, so wikilink brackets inside
+// it would add phantom edges to the link graph and backlink index.
+var reasonSanitizer = strings.NewReplacer("[[", "", "]]", "")
 
 func (l *Linker) judgeCandidates(ctx context.Context, candidates []candidate) ([]string, error) {
 	actions := make([]string, 0, len(candidates))
@@ -163,12 +170,12 @@ func (l *Linker) judgeCandidates(ctx context.Context, candidates []candidate) ([
 			actions = append(actions, fmt.Sprintf("skip [[%s]] ↔ [[%s]] (%.2f): unparseable verdict: %s", c.a, c.b, c.score, resp.Message.Content))
 			continue
 		}
-		reason := strings.Join(strings.Fields(v.Reason), " ")
 		if !v.Link {
 			l.judged[key] = true
-			actions = append(actions, fmt.Sprintf("skip [[%s]] ↔ [[%s]] (%.2f): %s", c.a, c.b, c.score, reason))
+			actions = append(actions, fmt.Sprintf("skip [[%s]] ↔ [[%s]] (%.2f): %s", c.a, c.b, c.score, strings.Join(strings.Fields(v.Deliberation), " ")))
 			continue
 		}
+		reason := strings.Join(strings.Fields(reasonSanitizer.Replace(v.Reason)), " ")
 		into, other := c.a, c.b
 		if v.Into == c.b {
 			into, other = c.b, c.a

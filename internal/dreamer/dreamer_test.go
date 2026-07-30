@@ -338,8 +338,8 @@ func TestJudgeCandidates(t *testing.T) {
 	}
 
 	llm := &fakeLLM{replies: []string{
-		`{"link": true, "reason": "dialing espresso builds on brewing basics", "into": "espresso"}`,
-		`{"link": false, "reason": "different domains", "into": "espresso"}`,
+		`{"deliberation": "espresso dialing assumes brewing fundamentals", "link": true, "into": "espresso", "reason": "dialing espresso builds on [[brewing]] basics"}`,
+		`{"deliberation": "different domains", "link": false, "into": "espresso", "reason": ""}`,
 		`**No.** not json at all`,
 	}}
 	l := NewLinker(st, llm, "test-model")
@@ -373,6 +373,9 @@ func TestJudgeCandidates(t *testing.T) {
 	if !strings.Contains(view.Note.Body, "## Related") || !strings.Contains(view.Note.Body, "- [[coffee]] — dialing espresso builds on brewing basics") {
 		t.Errorf("link not written into espresso:\n%s", view.Note.Body)
 	}
+	if strings.Contains(view.Note.Body, "[[brewing]]") {
+		t.Errorf("wikilink in reason not sanitized:\n%s", view.Note.Body)
+	}
 	coffee, err := st.Get("coffee")
 	if err != nil {
 		t.Fatalf("Get coffee: %v", err)
@@ -388,15 +391,15 @@ func TestJudgeCandidates(t *testing.T) {
 	if req.Model != "test-model" || len(req.Tools) != 0 {
 		t.Errorf("request model/tools = %q/%v", req.Model, req.Tools)
 	}
-	for _, part := range []string{`"link"`, `"enum"`, `"coffee"`, `"espresso"`} {
+	for _, part := range []string{`"deliberation"`, `"link"`, `"enum"`, `"coffee"`, `"espresso"`} {
 		if !strings.Contains(string(req.Format), part) {
 			t.Errorf("request format missing %s: %s", part, req.Format)
 		}
 	}
 	format := string(req.Format)
-	reasonAt, linkAt, intoAt := strings.Index(format, `"reason"`), strings.Index(format, `"link"`), strings.Index(format, `"into"`)
-	if !(reasonAt < linkAt && linkAt < intoAt) {
-		t.Errorf("schema field order must be reason, link, into (generation order = reasoning before verdict): %s", format)
+	delibAt, linkAt, intoAt, reasonAt := strings.Index(format, `"deliberation"`), strings.Index(format, `"link"`), strings.Index(format, `"into"`), strings.Index(format, `"reason"`)
+	if !(delibAt < linkAt && linkAt < intoAt && intoAt < reasonAt) {
+		t.Errorf("schema field order must be deliberation, link, into, reason (deliberate before the verdict, annotate after placement): %s", format)
 	}
 	if len(req.Messages) != 2 || req.Messages[0].Role != ollama.RoleSystem || req.Messages[1].Role != ollama.RoleUser {
 		t.Fatalf("messages = %+v", req.Messages)
